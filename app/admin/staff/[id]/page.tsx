@@ -11,14 +11,7 @@ export default async function EditStaffPage({ params }: { params: Promise<{ id: 
 
   const supabase = await createServerClient()
 
-  const { data: staff } = await supabase
-    .from("staff")
-    .select(`
-      *,
-      profile:profiles(full_name, email, avatar_url)
-    `)
-    .eq("id", id)
-    .single()
+  const { data: staff } = await supabase.from("staff").select("*").eq("id", id).single()
 
   if (!staff) {
     notFound()

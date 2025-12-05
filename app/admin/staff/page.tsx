@@ -7,13 +7,7 @@ import { StaffTable } from "@/components/admin/staff-table"
 export default async function StaffPage() {
   const supabase = await createServerClient()
 
-  const { data: staff } = await supabase
-    .from("staff")
-    .select(`
-      *,
-      profile:profiles(full_name, email, avatar_url)
-    `)
-    .order("created_at", { ascending: false })
+  const { data: staff } = await supabase.from("staff").select("*").order("created_at", { ascending: false })
 
   return (
     <div className="space-y-6">

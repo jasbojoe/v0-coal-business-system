@@ -25,22 +25,23 @@ import Link from "next/link"
 
 interface Staff {
   id: string
-  user_id: string | null
-  role: string
+  profile_id: string | null
+  employee_id: string | null
+  full_name: string
+  email: string
+  phone: string | null
   department: string | null
+  position: string // was 'role'
+  status: string // was 'is_active' boolean
   hire_date: string | null
   salary: number | null
-  is_active: boolean
-  phone: string | null
   emergency_contact: string | null
-  profile: {
-    full_name: string | null
-    email: string | null
-    avatar_url: string | null
-  } | null
+  emergency_phone: string | null
+  address: string | null
+  notes: string | null
 }
 
-const roleColors: Record<string, string> = {
+const positionColors: Record<string, string> = {
   admin: "bg-red-100 text-red-800",
   manager: "bg-purple-100 text-purple-800",
   production: "bg-blue-100 text-blue-800",
@@ -48,12 +49,19 @@ const roleColors: Record<string, string> = {
   delivery: "bg-orange-100 text-orange-800",
 }
 
-const departments = ["All", "Management", "Production", "Sales", "Logistics", "Finance"]
-const roles = ["All", "admin", "manager", "production", "sales", "delivery"]
+const statusColors: Record<string, string> = {
+  active: "bg-green-100 text-green-800",
+  inactive: "bg-gray-100 text-gray-800",
+  on_leave: "bg-yellow-100 text-yellow-800",
+  terminated: "bg-red-100 text-red-800",
+}
+
+const departments = ["All", "Management", "Production", "Sales", "Logistics", "Finance", "Customer Service"]
+const positions = ["All", "admin", "manager", "production", "sales", "delivery"]
 
 export function StaffTable({ staff }: { staff: Staff[] }) {
   const [search, setSearch] = useState("")
-  const [roleFilter, setRoleFilter] = useState("All")
+  const [positionFilter, setPositionFilter] = useState("All")
   const [departmentFilter, setDepartmentFilter] = useState("All")
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const router = useRouter()
@@ -61,12 +69,12 @@ export function StaffTable({ staff }: { staff: Staff[] }) {
 
   const filteredStaff = staff.filter((member) => {
     const matchesSearch =
-      member.profile?.full_name?.toLowerCase().includes(search.toLowerCase()) ||
-      member.profile?.email?.toLowerCase().includes(search.toLowerCase()) ||
+      member.full_name?.toLowerCase().includes(search.toLowerCase()) ||
+      member.email?.toLowerCase().includes(search.toLowerCase()) ||
       member.department?.toLowerCase().includes(search.toLowerCase())
-    const matchesRole = roleFilter === "All" || member.role === roleFilter
+    const matchesPosition = positionFilter === "All" || member.position === positionFilter
     const matchesDepartment = departmentFilter === "All" || member.department === departmentFilter
-    return matchesSearch && matchesRole && matchesDepartment
+    return matchesSearch && matchesPosition && matchesDepartment
   })
 
   const handleDelete = async () => {
@@ -77,8 +85,9 @@ export function StaffTable({ staff }: { staff: Staff[] }) {
     router.refresh()
   }
 
-  const toggleStatus = async (id: string, currentStatus: boolean) => {
-    await supabase.from("staff").update({ is_active: !currentStatus }).eq("id", id)
+  const toggleStatus = async (id: string, currentStatus: string) => {
+    const newStatus = currentStatus === "active" ? "inactive" : "active"
+    await supabase.from("staff").update({ status: newStatus }).eq("id", id)
     router.refresh()
   }
 
@@ -97,14 +106,14 @@ export function StaffTable({ staff }: { staff: Staff[] }) {
               />
             </div>
             <div className="flex gap-2">
-              <Select value={roleFilter} onValueChange={setRoleFilter}>
+              <Select value={positionFilter} onValueChange={setPositionFilter}>
                 <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Role" />
+                  <SelectValue placeholder="Position" />
                 </SelectTrigger>
                 <SelectContent>
-                  {roles.map((role) => (
-                    <SelectItem key={role} value={role}>
-                      {role === "All" ? "All Roles" : role.charAt(0).toUpperCase() + role.slice(1)}
+                  {positions.map((pos) => (
+                    <SelectItem key={pos} value={pos}>
+                      {pos === "All" ? "All Positions" : pos.charAt(0).toUpperCase() + pos.slice(1)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -129,7 +138,7 @@ export function StaffTable({ staff }: { staff: Staff[] }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Staff Member</TableHead>
-                  <TableHead>Role</TableHead>
+                  <TableHead>Position</TableHead>
                   <TableHead className="hidden md:table-cell">Department</TableHead>
                   <TableHead className="hidden lg:table-cell">Contact</TableHead>
                   <TableHead className="hidden sm:table-cell">Status</TableHead>
@@ -152,14 +161,14 @@ export function StaffTable({ staff }: { staff: Staff[] }) {
                             <UserCircle className="h-6 w-6 text-primary" />
                           </div>
                           <div>
-                            <p className="font-medium">{member.profile?.full_name || "Unknown"}</p>
-                            <p className="text-sm text-muted-foreground">{member.profile?.email}</p>
+                            <p className="font-medium">{member.full_name || "Unknown"}</p>
+                            <p className="text-sm text-muted-foreground">{member.email}</p>
                           </div>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge className={roleColors[member.role] || "bg-gray-100 text-gray-800"}>
-                          {member.role.charAt(0).toUpperCase() + member.role.slice(1)}
+                        <Badge className={positionColors[member.position] || "bg-gray-100 text-gray-800"}>
+                          {member.position.charAt(0).toUpperCase() + member.position.slice(1)}
                         </Badge>
                       </TableCell>
                       <TableCell className="hidden md:table-cell">{member.department || "-"}</TableCell>
@@ -174,8 +183,10 @@ export function StaffTable({ staff }: { staff: Staff[] }) {
                         )}
                       </TableCell>
                       <TableCell className="hidden sm:table-cell">
-                        <Badge variant={member.is_active ? "default" : "secondary"}>
-                          {member.is_active ? "Active" : "Inactive"}
+                        <Badge className={statusColors[member.status] || "bg-gray-100 text-gray-800"}>
+                          {member.status === "on_leave"
+                            ? "On Leave"
+                            : member.status.charAt(0).toUpperCase() + member.status.slice(1)}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
@@ -192,8 +203,8 @@ export function StaffTable({ staff }: { staff: Staff[] }) {
                                 Edit
                               </Link>
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => toggleStatus(member.id, member.is_active)}>
-                              {member.is_active ? "Deactivate" : "Activate"}
+                            <DropdownMenuItem onClick={() => toggleStatus(member.id, member.status)}>
+                              {member.status === "active" ? "Deactivate" : "Activate"}
                             </DropdownMenuItem>
                             <DropdownMenuItem className="text-destructive" onClick={() => setDeleteId(member.id)}>
                               <Trash2 className="mr-2 h-4 w-4" />

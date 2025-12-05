@@ -8,30 +8,31 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Switch } from "@/components/ui/switch"
 import { ArrowLeft, Save, Loader2 } from "lucide-react"
 import Link from "next/link"
 
 interface Staff {
   id: string
-  user_id: string | null
-  role: string
+  profile_id: string | null
+  employee_id: string | null
+  full_name: string
+  email: string
+  phone: string | null
   department: string | null
+  position: string // was 'role'
+  status: string // was 'is_active' boolean
   hire_date: string | null
   salary: number | null
-  is_active: boolean
-  phone: string | null
   emergency_contact: string | null
-  profile: {
-    full_name: string | null
-    email: string | null
-    avatar_url: string | null
-  } | null
+  emergency_phone: string | null
+  address: string | null
+  notes: string | null
 }
 
-const roles = [
+const positions = [
   { value: "admin", label: "Admin" },
   { value: "manager", label: "Manager" },
   { value: "production", label: "Production" },
@@ -48,15 +49,18 @@ export function StaffForm({ staff }: { staff?: Staff }) {
   const [error, setError] = useState("")
 
   const [formData, setFormData] = useState({
-    email: staff?.profile?.email || "",
-    full_name: staff?.profile?.full_name || "",
-    role: staff?.role || "sales",
+    email: staff?.email || "",
+    full_name: staff?.full_name || "",
+    position: staff?.position || "sales", // was 'role'
     department: staff?.department || "",
     phone: staff?.phone || "",
     hire_date: staff?.hire_date || new Date().toISOString().split("T")[0],
     salary: staff?.salary?.toString() || "",
     emergency_contact: staff?.emergency_contact || "",
-    is_active: staff?.is_active ?? true,
+    emergency_phone: staff?.emergency_phone || "",
+    address: staff?.address || "",
+    notes: staff?.notes || "",
+    status: staff?.status || "active", // was 'is_active' boolean
     password: "",
   })
 
@@ -67,32 +71,32 @@ export function StaffForm({ staff }: { staff?: Staff }) {
 
     try {
       if (staff) {
-        // Update existing staff
         const { error: staffError } = await supabase
           .from("staff")
           .update({
-            role: formData.role,
-            department: formData.department || null,
+            full_name: formData.full_name,
+            email: formData.email,
             phone: formData.phone || null,
+            position: formData.position, // was 'role'
+            department: formData.department || null,
             hire_date: formData.hire_date || null,
             salary: formData.salary ? Number.parseFloat(formData.salary) : null,
             emergency_contact: formData.emergency_contact || null,
-            is_active: formData.is_active,
+            emergency_phone: formData.emergency_phone || null,
+            address: formData.address || null,
+            notes: formData.notes || null,
+            status: formData.status, // was 'is_active'
           })
           .eq("id", staff.id)
 
         if (staffError) throw staffError
-
-        // Update profile if user exists
-        if (staff.user_id) {
-          await supabase.from("profiles").update({ full_name: formData.full_name }).eq("id", staff.user_id)
-        }
       } else {
-        // Create new staff - first create user account
+        // Create new staff
         if (!formData.email || !formData.password) {
           throw new Error("Email and password are required for new staff members")
         }
 
+        // First create auth user
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
@@ -107,16 +111,24 @@ export function StaffForm({ staff }: { staff?: Staff }) {
         if (authError) throw authError
 
         if (authData.user) {
-          // Create staff record
+          // Generate employee ID
+          const employeeId = `EMP-${Date.now().toString().slice(-6)}`
+
           const { error: staffError } = await supabase.from("staff").insert({
-            user_id: authData.user.id,
-            role: formData.role,
-            department: formData.department || null,
+            profile_id: authData.user.id, // was 'user_id'
+            employee_id: employeeId,
+            full_name: formData.full_name,
+            email: formData.email,
             phone: formData.phone || null,
+            position: formData.position, // was 'role'
+            department: formData.department || null,
             hire_date: formData.hire_date || null,
             salary: formData.salary ? Number.parseFloat(formData.salary) : null,
             emergency_contact: formData.emergency_contact || null,
-            is_active: formData.is_active,
+            emergency_phone: formData.emergency_phone || null,
+            address: formData.address || null,
+            notes: formData.notes || null,
+            status: formData.status, // was 'is_active' (boolean)
           })
 
           if (staffError) throw staffError
@@ -200,13 +212,32 @@ export function StaffForm({ staff }: { staff?: Staff }) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="emergency_contact">Emergency Contact</Label>
+              <Label htmlFor="address">Address</Label>
               <Input
-                id="emergency_contact"
-                value={formData.emergency_contact}
-                onChange={(e) => setFormData({ ...formData, emergency_contact: e.target.value })}
-                placeholder="Name and phone number"
+                id="address"
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
               />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="emergency_contact">Emergency Contact Name</Label>
+                <Input
+                  id="emergency_contact"
+                  value={formData.emergency_contact}
+                  onChange={(e) => setFormData({ ...formData, emergency_contact: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="emergency_phone">Emergency Phone</Label>
+                <Input
+                  id="emergency_phone"
+                  type="tel"
+                  value={formData.emergency_phone}
+                  onChange={(e) => setFormData({ ...formData, emergency_phone: e.target.value })}
+                />
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -217,15 +248,18 @@ export function StaffForm({ staff }: { staff?: Staff }) {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="role">Role *</Label>
-              <Select value={formData.role} onValueChange={(value) => setFormData({ ...formData, role: value })}>
+              <Label htmlFor="position">Position *</Label>
+              <Select
+                value={formData.position}
+                onValueChange={(value) => setFormData({ ...formData, position: value })}
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select role" />
+                  <SelectValue placeholder="Select position" />
                 </SelectTrigger>
                 <SelectContent>
-                  {roles.map((role) => (
-                    <SelectItem key={role.value} value={role.value}>
-                      {role.label}
+                  {positions.map((pos) => (
+                    <SelectItem key={pos.value} value={pos.value}>
+                      {pos.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -273,16 +307,30 @@ export function StaffForm({ staff }: { staff?: Staff }) {
               />
             </div>
 
-            <div className="flex items-center justify-between pt-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="is_active">Active Status</Label>
-                <p className="text-sm text-muted-foreground">Inactive staff cannot access the system</p>
-              </div>
-              <Switch
-                id="is_active"
-                checked={formData.is_active}
-                onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+            <div className="space-y-2">
+              <Label htmlFor="notes">Notes</Label>
+              <Textarea
+                id="notes"
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                rows={2}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select value={formData.status} onValueChange={(value) => setFormData({ ...formData, status: value })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="on_leave">On Leave</SelectItem>
+                  <SelectItem value="terminated">Terminated</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Inactive staff cannot access the system</p>
             </div>
           </CardContent>
         </Card>
