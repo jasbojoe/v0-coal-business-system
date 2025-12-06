@@ -2,12 +2,13 @@
 
 import type React from "react"
 import { useState } from "react"
+import { createBrowserClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { MapPin, Phone, Mail, Clock, Send, CheckCircle } from "lucide-react"
+import { MapPin, Phone, Mail, Clock, Send, CheckCircle, Loader2 } from "lucide-react"
 
 const contactInfo = [
   { icon: MapPin, title: "Address", details: ["123 Industrial Road", "Freetown, Sierra Leone"] },
@@ -16,16 +17,64 @@ const contactInfo = [
   { icon: Clock, title: "Hours", details: ["Mon - Fri: 8AM - 6PM"] },
 ]
 
+const inquiryTypes = [
+  { value: "quote", label: "Request a Quote" },
+  { value: "bulk_order", label: "Bulk Order" },
+  { value: "partnership", label: "Partnership" },
+  { value: "support", label: "Customer Support" },
+  { value: "general", label: "General Inquiry" },
+]
+
 export function ContactSection() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [error, setError] = useState("")
+
+  const [formData, setFormData] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    inquiryType: "",
+    message: "",
+  })
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setIsSubmitting(true)
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-    setIsSubmitting(false)
-    setSubmitted(true)
+    setError("")
+
+    try {
+      const supabase = createBrowserClient()
+
+      const { error: insertError } = await supabase.from("contact_inquiries").insert({
+        first_name: formData.firstName,
+        last_name: formData.lastName,
+        email: formData.email,
+        phone: formData.phone || null,
+        inquiry_type: formData.inquiryType,
+        message: formData.message,
+        status: "new",
+      })
+
+      if (insertError) throw insertError
+
+      setSubmitted(true)
+      // Reset form
+      setFormData({
+        firstName: "",
+        lastName: "",
+        email: "",
+        phone: "",
+        inquiryType: "",
+        message: "",
+      })
+    } catch (err: any) {
+      console.error("[v0] Contact form error:", err)
+      setError(err.message || "Failed to send message. Please try again.")
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -56,77 +105,120 @@ export function ContactSection() {
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-4">
+                {error && <div className="bg-red-50 text-red-600 px-4 py-2 rounded-lg text-sm">{error}</div>}
+
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <Label htmlFor="firstName" className="text-xs text-slate-700">
-                      First Name
+                      First Name *
                     </Label>
                     <Input
                       id="firstName"
                       placeholder="John"
                       required
+                      value={formData.firstName}
+                      onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                       className="bg-white border-slate-200 rounded-lg h-10 text-sm"
                     />
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="lastName" className="text-xs text-slate-700">
-                      Last Name
+                      Last Name *
                     </Label>
                     <Input
                       id="lastName"
                       placeholder="Doe"
                       required
+                      value={formData.lastName}
+                      onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
                       className="bg-white border-slate-200 rounded-lg h-10 text-sm"
                     />
                   </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="email" className="text-xs text-slate-700">
-                    Email
-                  </Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="john@example.com"
-                    required
-                    className="bg-white border-slate-200 rounded-lg h-10 text-sm"
-                  />
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="email" className="text-xs text-slate-700">
+                      Email *
+                    </Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="john@example.com"
+                      required
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      className="bg-white border-slate-200 rounded-lg h-10 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="phone" className="text-xs text-slate-700">
+                      Phone (Optional)
+                    </Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      placeholder="+232 76 123 456"
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      className="bg-white border-slate-200 rounded-lg h-10 text-sm"
+                    />
+                  </div>
                 </div>
+
                 <div className="space-y-1.5">
                   <Label htmlFor="inquiry" className="text-xs text-slate-700">
-                    Inquiry Type
+                    Inquiry Type *
                   </Label>
-                  <Select>
+                  <Select
+                    value={formData.inquiryType}
+                    onValueChange={(value) => setFormData({ ...formData, inquiryType: value })}
+                    required
+                  >
                     <SelectTrigger className="bg-white border-slate-200 rounded-lg h-10 text-sm">
                       <SelectValue placeholder="Select type" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="quote">Request a Quote</SelectItem>
-                      <SelectItem value="bulk">Bulk Order</SelectItem>
-                      <SelectItem value="partnership">Partnership</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
+                      {inquiryTypes.map((type) => (
+                        <SelectItem key={type.value} value={type.value}>
+                          {type.label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
+
                 <div className="space-y-1.5">
                   <Label htmlFor="message" className="text-xs text-slate-700">
-                    Message
+                    Message *
                   </Label>
                   <Textarea
                     id="message"
                     placeholder="Tell us about your needs..."
                     rows={3}
                     required
+                    value={formData.message}
+                    onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                     className="resize-none bg-white border-slate-200 rounded-lg text-sm"
                   />
                 </div>
+
                 <Button
                   type="submit"
                   className="w-full bg-gradient-to-r from-teal-500 to-emerald-500 text-white hover:from-teal-600 hover:to-emerald-600 rounded-full h-10 text-sm"
                   disabled={isSubmitting}
                 >
-                  {isSubmitting ? "Sending..." : "Send Message"}
-                  <Send className="ml-2 h-4 w-4" />
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      Send Message
+                      <Send className="ml-2 h-4 w-4" />
+                    </>
+                  )}
                 </Button>
               </form>
             )}

@@ -22,8 +22,8 @@ interface Staff {
   email: string
   phone: string | null
   department: string | null
-  position: string // was 'role'
-  status: string // was 'is_active' boolean
+  position: string
+  status: string
   hire_date: string | null
   salary: number | null
   emergency_contact: string | null
@@ -35,12 +35,26 @@ interface Staff {
 const positions = [
   { value: "admin", label: "Admin" },
   { value: "manager", label: "Manager" },
-  { value: "production", label: "Production" },
-  { value: "sales", label: "Sales" },
-  { value: "delivery", label: "Delivery" },
+  { value: "supervisor", label: "Supervisor" },
+  { value: "operator", label: "Operator" },
+  { value: "driver", label: "Driver" },
+  { value: "accountant", label: "Accountant" },
+  { value: "sales_rep", label: "Sales Representative" },
 ]
 
-const departments = ["Management", "Production", "Sales", "Logistics", "Finance", "Customer Service"]
+const departments = [
+  { value: "production", label: "Production" },
+  { value: "sales", label: "Sales" },
+  { value: "logistics", label: "Logistics" },
+  { value: "administration", label: "Administration" },
+  { value: "management", label: "Management" },
+]
+
+const statuses = [
+  { value: "active", label: "Active" },
+  { value: "on_leave", label: "On Leave" },
+  { value: "terminated", label: "Terminated" },
+]
 
 export function StaffForm({ staff }: { staff?: Staff }) {
   const router = useRouter()
@@ -51,8 +65,8 @@ export function StaffForm({ staff }: { staff?: Staff }) {
   const [formData, setFormData] = useState({
     email: staff?.email || "",
     full_name: staff?.full_name || "",
-    position: staff?.position || "sales", // was 'role'
-    department: staff?.department || "",
+    position: staff?.position || "operator",
+    department: staff?.department || "production",
     phone: staff?.phone || "",
     hire_date: staff?.hire_date || new Date().toISOString().split("T")[0],
     salary: staff?.salary?.toString() || "",
@@ -60,7 +74,7 @@ export function StaffForm({ staff }: { staff?: Staff }) {
     emergency_phone: staff?.emergency_phone || "",
     address: staff?.address || "",
     notes: staff?.notes || "",
-    status: staff?.status || "active", // was 'is_active' boolean
+    status: staff?.status || "active",
     password: "",
   })
 
@@ -70,6 +84,10 @@ export function StaffForm({ staff }: { staff?: Staff }) {
     setError("")
 
     try {
+      if (!formData.department) {
+        throw new Error("Department is required")
+      }
+
       if (staff) {
         const { error: staffError } = await supabase
           .from("staff")
@@ -77,15 +95,16 @@ export function StaffForm({ staff }: { staff?: Staff }) {
             full_name: formData.full_name,
             email: formData.email,
             phone: formData.phone || null,
-            position: formData.position, // was 'role'
-            department: formData.department || null,
+            position: formData.position,
+            department: formData.department, // Already lowercase from select
             hire_date: formData.hire_date || null,
             salary: formData.salary ? Number.parseFloat(formData.salary) : null,
             emergency_contact: formData.emergency_contact || null,
             emergency_phone: formData.emergency_phone || null,
             address: formData.address || null,
             notes: formData.notes || null,
-            status: formData.status, // was 'is_active'
+            status: formData.status,
+            updated_at: new Date().toISOString(),
           })
           .eq("id", staff.id)
 
@@ -94,6 +113,10 @@ export function StaffForm({ staff }: { staff?: Staff }) {
         // Create new staff
         if (!formData.email || !formData.password) {
           throw new Error("Email and password are required for new staff members")
+        }
+
+        if (formData.password.length < 6) {
+          throw new Error("Password must be at least 6 characters")
         }
 
         // First create auth user
@@ -115,20 +138,20 @@ export function StaffForm({ staff }: { staff?: Staff }) {
           const employeeId = `EMP-${Date.now().toString().slice(-6)}`
 
           const { error: staffError } = await supabase.from("staff").insert({
-            profile_id: authData.user.id, // was 'user_id'
+            profile_id: authData.user.id,
             employee_id: employeeId,
             full_name: formData.full_name,
             email: formData.email,
             phone: formData.phone || null,
-            position: formData.position, // was 'role'
-            department: formData.department || null,
+            position: formData.position,
+            department: formData.department, // lowercase value from select
             hire_date: formData.hire_date || null,
             salary: formData.salary ? Number.parseFloat(formData.salary) : null,
             emergency_contact: formData.emergency_contact || null,
             emergency_phone: formData.emergency_phone || null,
             address: formData.address || null,
             notes: formData.notes || null,
-            status: formData.status, // was 'is_active' (boolean)
+            status: formData.status, // lowercase value from select
           })
 
           if (staffError) throw staffError
@@ -138,6 +161,7 @@ export function StaffForm({ staff }: { staff?: Staff }) {
       router.push("/admin/staff")
       router.refresh()
     } catch (err: any) {
+      console.error("[v0] Staff form error:", err)
       setError(err.message)
     } finally {
       setLoading(false)
@@ -267,18 +291,19 @@ export function StaffForm({ staff }: { staff?: Staff }) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="department">Department</Label>
+              <Label htmlFor="department">Department *</Label>
               <Select
                 value={formData.department}
                 onValueChange={(value) => setFormData({ ...formData, department: value })}
+                required
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select department" />
                 </SelectTrigger>
                 <SelectContent>
                   {departments.map((dept) => (
-                    <SelectItem key={dept} value={dept}>
-                      {dept}
+                    <SelectItem key={dept.value} value={dept.value}>
+                      {dept.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -324,10 +349,11 @@ export function StaffForm({ staff }: { staff?: Staff }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                  <SelectItem value="on_leave">On Leave</SelectItem>
-                  <SelectItem value="terminated">Terminated</SelectItem>
+                  {statuses.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">Inactive staff cannot access the system</p>

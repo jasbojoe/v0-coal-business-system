@@ -42,10 +42,11 @@ export function InquiriesTable({ inquiries }: { inquiries: Inquiry[] }) {
   const supabase = createBrowserClient()
 
   const filteredInquiries = inquiries.filter((inquiry) => {
+    const searchLower = search.toLowerCase()
     const matchesSearch =
-      inquiry.name.toLowerCase().includes(search.toLowerCase()) ||
-      inquiry.email.toLowerCase().includes(search.toLowerCase()) ||
-      inquiry.subject?.toLowerCase().includes(search.toLowerCase())
+      (inquiry.name?.toLowerCase() || "").includes(searchLower) ||
+      (inquiry.email?.toLowerCase() || "").includes(searchLower) ||
+      (inquiry.subject?.toLowerCase() || "").includes(searchLower)
     const matchesStatus = statusFilter === "All" || inquiry.status === statusFilter
     const matchesType = typeFilter === "All" || inquiry.inquiry_type === typeFilter
     return matchesSearch && matchesStatus && matchesType
@@ -120,21 +121,20 @@ export function InquiriesTable({ inquiries }: { inquiries: Inquiry[] }) {
                   filteredInquiries.map((inquiry) => {
                     const status = statusConfig[inquiry.status] || statusConfig.new
                     const StatusIcon = status.icon
+                    const inquiryType = inquiry.inquiry_type || "general"
                     return (
                       <TableRow key={inquiry.id}>
                         <TableCell>
                           <div>
-                            <p className="font-medium">{inquiry.name}</p>
+                            <p className="font-medium">{inquiry.name || "Unknown"}</p>
                             <p className="text-sm text-muted-foreground flex items-center gap-1">
                               <Mail className="h-3 w-3" />
-                              {inquiry.email}
+                              {inquiry.email || "No email"}
                             </p>
                           </div>
                         </TableCell>
                         <TableCell className="hidden md:table-cell">
-                          <Badge variant="outline">
-                            {inquiry.inquiry_type.charAt(0).toUpperCase() + inquiry.inquiry_type.slice(1)}
-                          </Badge>
+                          <Badge variant="outline">{inquiryType.charAt(0).toUpperCase() + inquiryType.slice(1)}</Badge>
                         </TableCell>
                         <TableCell className="hidden lg:table-cell max-w-[200px] truncate">
                           {inquiry.subject || "-"}
@@ -182,11 +182,11 @@ export function InquiriesTable({ inquiries }: { inquiries: Inquiry[] }) {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Name</p>
-                  <p className="font-medium">{selectedInquiry.name}</p>
+                  <p className="font-medium">{selectedInquiry.name || "Unknown"}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Email</p>
-                  <p className="font-medium">{selectedInquiry.email}</p>
+                  <p className="font-medium">{selectedInquiry.email || "No email"}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Phone</p>
@@ -194,7 +194,7 @@ export function InquiriesTable({ inquiries }: { inquiries: Inquiry[] }) {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Type</p>
-                  <p className="font-medium capitalize">{selectedInquiry.inquiry_type}</p>
+                  <p className="font-medium capitalize">{selectedInquiry.inquiry_type || "general"}</p>
                 </div>
               </div>
               <div>
