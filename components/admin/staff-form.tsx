@@ -96,7 +96,7 @@ export function StaffForm({ staff }: { staff?: Staff }) {
             email: formData.email,
             phone: formData.phone || null,
             position: formData.position,
-            department: formData.department, // Already lowercase from select
+            department: formData.department,
             hire_date: formData.hire_date || null,
             salary: formData.salary ? Number.parseFloat(formData.salary) : null,
             emergency_contact: formData.emergency_contact || null,
@@ -110,7 +110,6 @@ export function StaffForm({ staff }: { staff?: Staff }) {
 
         if (staffError) throw staffError
       } else {
-        // Create new staff
         if (!formData.email || !formData.password) {
           throw new Error("Email and password are required for new staff members")
         }
@@ -119,7 +118,6 @@ export function StaffForm({ staff }: { staff?: Staff }) {
           throw new Error("Password must be at least 6 characters")
         }
 
-        // First create auth user
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
@@ -133,28 +131,52 @@ export function StaffForm({ staff }: { staff?: Staff }) {
 
         if (authError) throw authError
 
-        if (authData.user) {
-          // Generate employee ID
-          const employeeId = `EMP-${Date.now().toString().slice(-6)}`
+        if (!authData.user) {
+          throw new Error("Failed to create user account")
+        }
 
-          const { error: staffError } = await supabase.from("staff").insert({
-            profile_id: authData.user.id,
-            employee_id: employeeId,
-            full_name: formData.full_name,
+        const userId = authData.user.id
+
+        const { data: existingProfile } = await supabase.from("profiles").select("id").eq("id", userId).single()
+
+        if (!existingProfile) {
+          const { error: profileError } = await supabase.from("profiles").insert({
+            id: userId,
             email: formData.email,
+            full_name: formData.full_name,
             phone: formData.phone || null,
-            position: formData.position,
-            department: formData.department, // lowercase value from select
-            hire_date: formData.hire_date || null,
-            salary: formData.salary ? Number.parseFloat(formData.salary) : null,
-            emergency_contact: formData.emergency_contact || null,
-            emergency_phone: formData.emergency_phone || null,
-            address: formData.address || null,
-            notes: formData.notes || null,
-            status: formData.status, // lowercase value from select
+            role: formData.position === "admin" ? "admin" : "staff",
+            is_active: true,
           })
 
-          if (staffError) throw staffError
+          if (profileError) {
+            console.error("[v0] Profile creation error:", profileError)
+            throw new Error(`Failed to create profile: ${profileError.message}`)
+          }
+        }
+
+        const employeeId = `EMP-${Date.now().toString().slice(-6)}`
+
+        const { error: staffError } = await supabase.from("staff").insert({
+          profile_id: userId,
+          employee_id: employeeId,
+          full_name: formData.full_name,
+          email: formData.email,
+          phone: formData.phone || null,
+          position: formData.position,
+          department: formData.department,
+          hire_date: formData.hire_date || null,
+          salary: formData.salary ? Number.parseFloat(formData.salary) : null,
+          emergency_contact: formData.emergency_contact || null,
+          emergency_phone: formData.emergency_phone || null,
+          address: formData.address || null,
+          notes: formData.notes || null,
+          status: formData.status,
+        })
+
+        if (staffError) {
+          console.error("[v0] Staff creation error:", staffError)
+          throw new Error(`Failed to create staff: ${staffError.message}`)
         }
       }
 
