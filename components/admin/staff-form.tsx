@@ -3,7 +3,6 @@
 import type React from "react"
 
 import { useState } from "react"
-import { createBrowserClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, Save, Loader2 } from "lucide-react"
 import Link from "next/link"
+import { createStaff, updateStaff } from "@/app/actions/staff"
 
 interface Staff {
   id: string
@@ -58,7 +58,6 @@ const statuses = [
 
 export function StaffForm({ staff }: { staff?: Staff }) {
   const router = useRouter()
-  const supabase = createBrowserClient()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
@@ -84,32 +83,28 @@ export function StaffForm({ staff }: { staff?: Staff }) {
     setError("")
 
     try {
-      if (!formData.department) {
-        throw new Error("Department is required")
-      }
-
       if (staff) {
-        const { error: staffError } = await supabase
-          .from("staff")
-          .update({
-            full_name: formData.full_name,
-            email: formData.email,
-            phone: formData.phone || null,
-            position: formData.position,
-            department: formData.department,
-            hire_date: formData.hire_date || null,
-            salary: formData.salary ? Number.parseFloat(formData.salary) : null,
-            emergency_contact: formData.emergency_contact || null,
-            emergency_phone: formData.emergency_phone || null,
-            address: formData.address || null,
-            notes: formData.notes || null,
-            status: formData.status,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", staff.id)
+        // Update existing staff using server action
+        const result = await updateStaff({
+          id: staff.id,
+          full_name: formData.full_name,
+          position: formData.position,
+          department: formData.department,
+          phone: formData.phone,
+          hire_date: formData.hire_date,
+          salary: formData.salary,
+          emergency_contact: formData.emergency_contact,
+          emergency_phone: formData.emergency_phone,
+          address: formData.address,
+          notes: formData.notes,
+          status: formData.status,
+        })
 
-        if (staffError) throw staffError
+        if (result.error) {
+          throw new Error(result.error)
+        }
       } else {
+        // Create new staff using server action
         if (!formData.email || !formData.password) {
           throw new Error("Email and password are required for new staff members")
         }
@@ -118,65 +113,24 @@ export function StaffForm({ staff }: { staff?: Staff }) {
           throw new Error("Password must be at least 6 characters")
         }
 
-        const { data: authData, error: authError } = await supabase.auth.signUp({
+        const result = await createStaff({
           email: formData.email,
           password: formData.password,
-          options: {
-            emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || window.location.origin,
-            data: {
-              full_name: formData.full_name,
-            },
-          },
-        })
-
-        if (authError) throw authError
-
-        if (!authData.user) {
-          throw new Error("Failed to create user account")
-        }
-
-        const userId = authData.user.id
-
-        const { data: existingProfile } = await supabase.from("profiles").select("id").eq("id", userId).single()
-
-        if (!existingProfile) {
-          const { error: profileError } = await supabase.from("profiles").insert({
-            id: userId,
-            email: formData.email,
-            full_name: formData.full_name,
-            phone: formData.phone || null,
-            role: formData.position === "admin" ? "admin" : "staff",
-            is_active: true,
-          })
-
-          if (profileError) {
-            console.error("[v0] Profile creation error:", profileError)
-            throw new Error(`Failed to create profile: ${profileError.message}`)
-          }
-        }
-
-        const employeeId = `EMP-${Date.now().toString().slice(-6)}`
-
-        const { error: staffError } = await supabase.from("staff").insert({
-          profile_id: userId,
-          employee_id: employeeId,
           full_name: formData.full_name,
-          email: formData.email,
-          phone: formData.phone || null,
           position: formData.position,
           department: formData.department,
-          hire_date: formData.hire_date || null,
-          salary: formData.salary ? Number.parseFloat(formData.salary) : null,
-          emergency_contact: formData.emergency_contact || null,
-          emergency_phone: formData.emergency_phone || null,
-          address: formData.address || null,
-          notes: formData.notes || null,
+          phone: formData.phone,
+          hire_date: formData.hire_date,
+          salary: formData.salary,
+          emergency_contact: formData.emergency_contact,
+          emergency_phone: formData.emergency_phone,
+          address: formData.address,
+          notes: formData.notes,
           status: formData.status,
         })
 
-        if (staffError) {
-          console.error("[v0] Staff creation error:", staffError)
-          throw new Error(`Failed to create staff: ${staffError.message}`)
+        if (result.error) {
+          throw new Error(result.error)
         }
       }
 
