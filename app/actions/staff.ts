@@ -78,14 +78,22 @@ export async function createStaff(data: CreateStaffData) {
     const userId = authData.user.id
 
     // Step 2: Create profile
-    const { error: profileError } = await supabaseAdmin.from("profiles").insert({
+// Step 2: Ensure profile exists (trigger already creates a basic one)
+// We use upsert to avoid "duplicate key value" on profiles_pkey
+const { error: profileError } = await supabaseAdmin
+  .from("profiles")
+  .upsert(
+    {
       id: userId,
       email: data.email,
       full_name: data.full_name,
       phone: data.phone || null,
       role: data.position === "admin" ? "admin" : "staff",
       is_active: true,
-    })
+    },
+    { onConflict: "id" }
+  )
+
 
     if (profileError) {
       console.error("[v0] Profile creation error:", profileError)
