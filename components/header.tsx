@@ -13,8 +13,8 @@ const navLinks = [
   { href: "#contact", label: "Contact" },
 ]
 
-const LOGO_WHITE = "/images/wiyone-logo-blacktext.svg"
-const LOGO_BLACK = "/images/wiyone-logo-whitetext.svg"
+const LOGO_DARK_BG = "/images/wiyone-logo-whitetext.svg" // white text, for dark hero
+const LOGO_LIGHT_BG = "/images/wiyone-logo-blacktext.svg" // black text, for white sections
 
 export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -34,7 +34,7 @@ export function Header() {
         <div className="flex h-20 items-center justify-between">
           <Link href="/" className="flex items-center">
             <Image
-              src={isScrolled ? LOGO_BLACK : LOGO_WHITE}
+              src={isScrolled ? LOGO_LIGHT_BG : LOGO_DARK_BG}
               alt="Wiyone Charcoal"
               width={140}
               height={70}
