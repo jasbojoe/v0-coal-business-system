@@ -18,12 +18,25 @@ interface Profile {
   avatar_url: string | null
 }
 
+interface CompanySettings {
+  id: string
+  company_name: string | null
+  business_email: string | null
+  phone: string | null
+  address: string | null
+  city: string | null
+  country: string | null
+  logo_url: string | null
+  website: string | null
+}
+
 interface SettingsFormProps {
   user: { id: string; email?: string }
   profile: Profile | null
+  companySettings: CompanySettings | null // Added company settings prop
 }
 
-export function SettingsForm({ user, profile }: SettingsFormProps) {
+export function SettingsForm({ user, profile, companySettings }: SettingsFormProps) {
   const router = useRouter()
   const supabase = createBrowserClient()
 
@@ -43,6 +56,14 @@ export function SettingsForm({ user, profile }: SettingsFormProps) {
   const [orderAlerts, setOrderAlerts] = useState(true)
   const [lowStockAlerts, setLowStockAlerts] = useState(true)
   const [weeklyReports, setWeeklyReports] = useState(false)
+
+  const [companyName, setCompanyName] = useState(companySettings?.company_name || "")
+  const [businessEmail, setBusinessEmail] = useState(companySettings?.business_email || "")
+  const [companyPhone, setCompanyPhone] = useState(companySettings?.phone || "")
+  const [companyAddress, setCompanyAddress] = useState(companySettings?.address || "")
+  const [companyCity, setCompanyCity] = useState(companySettings?.city || "")
+  const [companyCountry, setCompanyCountry] = useState(companySettings?.country || "")
+  const [companyWebsite, setCompanyWebsite] = useState(companySettings?.website || "")
 
   const updateProfile = async () => {
     setLoading(true)
@@ -87,6 +108,43 @@ export function SettingsForm({ user, profile }: SettingsFormProps) {
       setCurrentPassword("")
       setNewPassword("")
       setConfirmPassword("")
+    } catch (err: any) {
+      setMessage({ type: "error", text: err.message })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const updateCompanySettings = async () => {
+    setLoading(true)
+    setMessage({ type: "", text: "" })
+
+    try {
+      const settingsData = {
+        company_name: companyName,
+        business_email: businessEmail,
+        phone: companyPhone,
+        address: companyAddress,
+        city: companyCity,
+        country: companyCountry,
+        website: companyWebsite,
+        updated_at: new Date().toISOString(),
+      }
+
+      if (companySettings?.id) {
+        // Update existing settings
+        const { error } = await supabase.from("company_settings").update(settingsData).eq("id", companySettings.id)
+
+        if (error) throw error
+      } else {
+        // Insert new settings
+        const { error } = await supabase.from("company_settings").insert(settingsData)
+
+        if (error) throw error
+      }
+
+      setMessage({ type: "success", text: "Company information saved successfully" })
+      router.refresh()
     } catch (err: any) {
       setMessage({ type: "error", text: err.message })
     } finally {
@@ -262,32 +320,102 @@ export function SettingsForm({ user, profile }: SettingsFormProps) {
         <Card>
           <CardHeader>
             <CardTitle>Company Information</CardTitle>
-            <CardDescription>Manage your business details</CardDescription>
+            <CardDescription>
+              Manage your business details - this info appears on the website contact page
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="companyName">Company Name</Label>
-              <Input id="companyName" defaultValue="Wiyone Charcoal" />
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="companyName">Company Name</Label>
+                <Input
+                  id="companyName"
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  placeholder="Enter company name"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="businessEmail">Business Email</Label>
+                <Input
+                  id="businessEmail"
+                  type="email"
+                  value={businessEmail}
+                  onChange={(e) => setBusinessEmail(e.target.value)}
+                  placeholder="info@example.com"
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="companyPhone">Phone Number</Label>
+                <Input
+                  id="companyPhone"
+                  type="tel"
+                  value={companyPhone}
+                  onChange={(e) => setCompanyPhone(e.target.value)}
+                  placeholder="+232 XX XXX XXXX"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="companyWebsite">Website</Label>
+                <Input
+                  id="companyWebsite"
+                  type="url"
+                  value={companyWebsite}
+                  onChange={(e) => setCompanyWebsite(e.target.value)}
+                  placeholder="https://example.com"
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="businessEmail">Business Email</Label>
-              <Input id="businessEmail" type="email" defaultValue="info@wiyonecharcoal.com" />
+              <Label htmlFor="companyAddress">Street Address</Label>
+              <Input
+                id="companyAddress"
+                value={companyAddress}
+                onChange={(e) => setCompanyAddress(e.target.value)}
+                placeholder="123 Industrial Road"
+              />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="phone">Phone Number</Label>
-              <Input id="phone" type="tel" defaultValue="+232 XX XXX XXXX" />
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="companyCity">City</Label>
+                <Input
+                  id="companyCity"
+                  value={companyCity}
+                  onChange={(e) => setCompanyCity(e.target.value)}
+                  placeholder="Freetown"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="companyCountry">Country</Label>
+                <Input
+                  id="companyCountry"
+                  value={companyCountry}
+                  onChange={(e) => setCompanyCountry(e.target.value)}
+                  placeholder="Sierra Leone"
+                />
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="address">Business Address</Label>
-              <Input id="address" defaultValue="Freetown, Sierra Leone" />
-            </div>
-
-            <Button className="bg-primary hover:bg-primary/90">
-              <Save className="mr-2 h-4 w-4" />
-              Save Company Info
+            <Button onClick={updateCompanySettings} disabled={loading} className="bg-primary hover:bg-primary/90">
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="mr-2 h-4 w-4" />
+                  Save Company Info
+                </>
+              )}
             </Button>
           </CardContent>
         </Card>

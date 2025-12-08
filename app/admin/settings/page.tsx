@@ -15,6 +15,8 @@ export default async function SettingsPage() {
 
   const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single()
 
+  const { data: companySettings } = await supabase.from("company_settings").select("*").limit(1).single()
+
   return (
     <div className="space-y-6">
       <div>
@@ -22,7 +24,7 @@ export default async function SettingsPage() {
         <p className="text-muted-foreground">Manage your account and system preferences</p>
       </div>
 
-      <SettingsForm user={user} profile={profile} />
+      <SettingsForm user={user} profile={profile} companySettings={companySettings} />
     </div>
   )
 }

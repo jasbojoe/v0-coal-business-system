@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { createBrowserClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,12 +10,13 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { MapPin, Phone, Mail, Clock, Send, CheckCircle, Loader2 } from "lucide-react"
 
-const contactInfo = [
-  { icon: MapPin, title: "Address", details: ["123 Industrial Road", "Freetown, Sierra Leone"] },
-  { icon: Phone, title: "Phone", details: ["+232 76 123 456"] },
-  { icon: Mail, title: "Email", details: ["info@wiyonecharcoal.com"] },
-  { icon: Clock, title: "Hours", details: ["Mon - Fri: 8AM - 6PM"] },
-]
+const defaultContactInfo = {
+  address: "123 Industrial Road",
+  city: "Freetown",
+  country: "Sierra Leone",
+  phone: "+232 76 123 456",
+  email: "info@wiyonecharcoal.com",
+}
 
 const inquiryTypes = [
   { value: "quote", label: "Request a Quote" },
@@ -30,6 +31,8 @@ export function ContactSection() {
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState("")
 
+  const [companyInfo, setCompanyInfo] = useState(defaultContactInfo)
+
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -38,6 +41,48 @@ export function ContactSection() {
     inquiryType: "",
     message: "",
   })
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function fetchCompanySettings() {
+      try {
+        const supabase = createBrowserClient()
+        const { data, error: fetchError } = await supabase.from("company_settings").select("*").limit(1).maybeSingle()
+
+        // Only update if component is still mounted and we got valid data
+        if (isMounted && data && !fetchError) {
+          setCompanyInfo({
+            address: data.address || defaultContactInfo.address,
+            city: data.city || defaultContactInfo.city,
+            country: data.country || defaultContactInfo.country,
+            phone: data.phone || defaultContactInfo.phone,
+            email: data.business_email || defaultContactInfo.email,
+          })
+        }
+      } catch (err) {
+        // Silently fail - just use default values
+        console.log("Using default contact info")
+      }
+    }
+
+    fetchCompanySettings()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const contactInfoCards = [
+    {
+      icon: MapPin,
+      title: "Address",
+      details: [companyInfo.address, `${companyInfo.city}, ${companyInfo.country}`],
+    },
+    { icon: Phone, title: "Phone", details: [companyInfo.phone] },
+    { icon: Mail, title: "Email", details: [companyInfo.email] },
+    { icon: Clock, title: "Hours", details: ["Mon - Fri: 8AM - 6PM"] },
+  ]
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -60,7 +105,6 @@ export function ContactSection() {
       if (insertError) throw insertError
 
       setSubmitted(true)
-      // Reset form
       setFormData({
         firstName: "",
         lastName: "",
@@ -70,7 +114,6 @@ export function ContactSection() {
         message: "",
       })
     } catch (err: any) {
-      console.error("[v0] Contact form error:", err)
       setError(err.message || "Failed to send message. Please try again.")
     } finally {
       setIsSubmitting(false)
@@ -224,16 +267,16 @@ export function ContactSection() {
             )}
           </div>
 
-          {/* Contact info */}
+          {/* Contact info cards */}
           <div className="grid gap-3 sm:grid-cols-2">
-            {contactInfo.map((item) => (
+            {contactInfoCards.map((item) => (
               <div key={item.title} className="rounded-xl bg-slate-50 p-4 border border-slate-200">
                 <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-teal-500 to-emerald-500 text-white">
                   <item.icon className="h-4 w-4" />
                 </div>
                 <h3 className="font-medium text-slate-900 text-sm">{item.title}</h3>
-                {item.details.map((detail) => (
-                  <p key={detail} className="text-xs text-slate-500">
+                {item.details.map((detail, index) => (
+                  <p key={index} className="text-xs text-slate-500">
                     {detail}
                   </p>
                 ))}

@@ -25,9 +25,14 @@ export async function updateSession(request: NextRequest) {
     },
   )
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  let user = null
+  try {
+    const { data } = await supabase.auth.getUser()
+    user = data?.user ?? null
+  } catch (error) {
+    // Auth check failed - treat as unauthenticated
+    console.error("Middleware auth check failed:", error)
+  }
 
   // Protect admin routes
   if (request.nextUrl.pathname.startsWith("/admin")) {
