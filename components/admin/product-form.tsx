@@ -172,16 +172,16 @@ export function ProductForm({ product, categories }: ProductFormProps) {
 
             {formData.image_url && (
               <div className="mt-2">
-                {/* optional: import Image from "next/image" at top */}
-                <Image
-                  src={formData.image_url}
-                  alt="Product preview"
-                  width={160}
-                  height={160}
-                  className="rounded-lg border border-slate-200 object-contain bg-slate-50"
-                />
+                <div className="h-40 w-40 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                  <img
+                    src={formData.image_url}
+                    alt="Product preview"
+                    className="h-full w-full object-contain"
+                  />
+                </div>
               </div>
             )}
+
           </div>
 
 
