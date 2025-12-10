@@ -79,11 +79,7 @@ export default async function ProductsPage() {
                     key={product.id}
                     className="group flex flex-col rounded-2xl border border-slate-200 bg-white overflow-hidden hover:shadow-lg hover:border-teal-200 transition-all"
                   >
-                    {product.is_featured && (
-                      <Badge className="absolute right-3 top-3 z-10 bg-gradient-to-r from-teal-500 to-emerald-500 text-white border-0 text-xs">
-                        Featured
-                      </Badge>
-                    )}
+
 
                     <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-b from-slate-100 to-slate-50">
                       {product.image_url ? (
