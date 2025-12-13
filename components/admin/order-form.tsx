@@ -65,7 +65,7 @@ export function OrderForm({ customers, products }: OrderFormProps) {
     ])
   }
 
-  // ✅ Fetch latest stock from DB when product is selected
+  // Fetch latest stock from DB when product is selected (for display only)
   const fetchLatestProduct = async (productId: string) => {
     const { data, error } = await supabase
       .from("products")
@@ -80,6 +80,7 @@ export function OrderForm({ customers, products }: OrderFormProps) {
     return data as Product
   }
 
+  // For backorders: do NOT clamp qty to stock.
   const updateItem = async (index: number, productId: string) => {
     setError(null)
 
@@ -90,16 +91,14 @@ export function OrderForm({ customers, products }: OrderFormProps) {
       setOrderItems((prev) => {
         const next = [...prev]
         const currentQty = next[index]?.quantity ?? 1
-
-        const clampedQty =
-          available > 0 ? Math.max(1, Math.min(currentQty, available)) : 1
+        const safeQty = Math.max(1, currentQty)
 
         next[index] = {
           product_id: latest.id,
           product_name: latest.name,
-          quantity: clampedQty,
+          quantity: safeQty,
           unit_price: latest.unit_price,
-          total: clampedQty * latest.unit_price,
+          total: safeQty * latest.unit_price,
           available_stock: available,
         }
 
@@ -111,21 +110,20 @@ export function OrderForm({ customers, products }: OrderFormProps) {
     }
   }
 
+  // Allow qty above available (backorder)
   const updateQuantity = (index: number, quantity: number) => {
     setOrderItems((prev) => {
       const next = [...prev]
       const item = next[index]
       if (!item) return prev
 
-      const available = item.available_stock ?? 0
       const raw = Number.isFinite(quantity) ? quantity : 1
-
-      const clamped = available > 0 ? Math.max(1, Math.min(raw, available)) : Math.max(1, raw)
+      const safe = Math.max(1, raw)
 
       next[index] = {
         ...item,
-        quantity: clamped,
-        total: clamped * (item.unit_price || 0),
+        quantity: safe,
+        total: safe * (item.unit_price || 0),
       }
       return next
     })
@@ -142,65 +140,13 @@ export function OrderForm({ customers, products }: OrderFormProps) {
   const hasInvalidItems = useMemo(() => {
     if (orderItems.length === 0) return true
     if (orderItems.some((i) => !i.product_id)) return true
-
-    // Block if any selected item is out of stock or over stock
-    return orderItems.some((i) => {
-      const available = i.available_stock ?? 0
-      if (i.product_id && available === 0) return true
-      return i.quantity > available
-    })
+    if (orderItems.some((i) => i.quantity < 1)) return true
+    return false
   }, [orderItems])
-
-  // ✅ Re-check stock just before submit (latest DB state)
-  const validateLatestStockBeforeSubmit = async () => {
-    // Get unique product IDs
-    const ids = Array.from(new Set(orderItems.map((i) => i.product_id).filter(Boolean)))
-
-    const { data, error } = await supabase
-      .from("products")
-      .select("id, stock_quantity")
-      .in("id", ids)
-
-    if (error) throw error
-
-    const stockMap = new Map<string, number>()
-    ;(data || []).forEach((row: any) => stockMap.set(row.id, Number(row.stock_quantity ?? 0)))
-
-    // Validate each item
-    for (const item of orderItems) {
-      const latestStock = stockMap.get(item.product_id) ?? 0
-
-      if (latestStock <= 0) {
-        throw new Error(`"${item.product_name}" is now out of stock. Please refresh and try again.`)
-      }
-
-      if (item.quantity > latestStock) {
-        throw new Error(
-          `"${item.product_name}" only has ${latestStock} left in stock. Please reduce quantity.`,
-        )
-      }
-    }
-
-    // Also update UI available_stock to reflect latest
-    setOrderItems((prev) =>
-      prev.map((i) => ({
-        ...i,
-        available_stock: stockMap.get(i.product_id) ?? i.available_stock ?? 0,
-      })),
-    )
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-
-    if (orderItems.length === 0) {
-      setError("Please add at least one item to the order")
-      return
-    }
-    if (orderItems.some((i) => !i.product_id)) {
-      setError("Please select a product for all order items")
-      return
-    }
+    if (hasInvalidItems) return
 
     setIsLoading(true)
     setStatus("creating")
@@ -209,10 +155,6 @@ export function OrderForm({ customers, products }: OrderFormProps) {
     const orderNumber = `ORD-${Date.now()}`
 
     try {
-      // ✅ Confirm stock right before inserting
-      await validateLatestStockBeforeSubmit()
-
-      // Create order
       const { data: order, error: orderError } = await supabase
         .from("orders")
         .insert({
@@ -231,7 +173,6 @@ export function OrderForm({ customers, products }: OrderFormProps) {
 
       if (orderError) throw orderError
 
-      // Create order items (DB trigger will deduct stock)
       const { error: itemsError } = await supabase.from("order_items").insert(
         orderItems.map((item) => ({
           order_id: order.id,
@@ -245,10 +186,8 @@ export function OrderForm({ customers, products }: OrderFormProps) {
 
       if (itemsError) throw itemsError
 
-      // ✅ Success state
       setStatus("success")
 
-      // Small delay so user sees the success message
       setTimeout(() => {
         router.push("/admin/orders")
         router.refresh()
@@ -264,10 +203,7 @@ export function OrderForm({ customers, products }: OrderFormProps) {
   return (
     <form onSubmit={handleSubmit}>
       <div className="mb-6">
-        <Link
-          href="/admin/orders"
-          className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
-        >
+        <Link href="/admin/orders" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back to Orders
         </Link>
@@ -291,13 +227,17 @@ export function OrderForm({ customers, products }: OrderFormProps) {
                 <div className="space-y-4">
                   {orderItems.map((item, index) => {
                     const available = item.available_stock ?? 0
-                    const isOutOfStock = item.product_id ? available === 0 : false
+                    const isShort = item.product_id && item.quantity > available
 
                     return (
                       <div key={index} className="flex flex-col gap-4 rounded-lg border p-4 sm:flex-row sm:items-end">
                         <div className="flex-1 space-y-2">
                           <Label>Product</Label>
-                          <Select value={item.product_id} onValueChange={(value) => updateItem(index, value)} disabled={isLoading}>
+                          <Select
+                            value={item.product_id}
+                            onValueChange={(value) => updateItem(index, value)}
+                            disabled={isLoading}
+                          >
                             <SelectTrigger>
                               <SelectValue placeholder="Select product" />
                             </SelectTrigger>
@@ -311,8 +251,10 @@ export function OrderForm({ customers, products }: OrderFormProps) {
                           </Select>
 
                           {item.product_id && (
-                            <p className={`text-xs ${isOutOfStock ? "text-rose-600" : "text-muted-foreground"}`}>
-                              {isOutOfStock ? "Out of stock" : `Available: ${available}`}
+                            <p className={`text-xs ${isShort ? "text-amber-600" : "text-muted-foreground"}`}>
+                              {isShort
+                                ? `Available now: ${available} • Remaining will be backordered`
+                                : `Available now: ${available}`}
                             </p>
                           )}
                         </div>
@@ -322,10 +264,9 @@ export function OrderForm({ customers, products }: OrderFormProps) {
                           <Input
                             type="number"
                             min="1"
-                            max={available > 0 ? String(available) : undefined}
                             value={item.quantity}
                             onChange={(e) => updateQuantity(index, Number.parseInt(e.target.value) || 1)}
-                            disabled={!item.product_id || isOutOfStock || isLoading}
+                            disabled={!item.product_id || isLoading}
                           />
                         </div>
 
@@ -448,7 +389,6 @@ export function OrderForm({ customers, products }: OrderFormProps) {
             </CardContent>
           </Card>
 
-          {/* Status banners */}
           {status === "creating" && (
             <div className="rounded-md border bg-slate-50 p-4 text-sm text-slate-700 flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin" />

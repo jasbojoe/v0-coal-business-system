@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { MoreHorizontal, Eye, Search } from "lucide-react"
+import { MoreHorizontal, Eye, Search, Loader2 } from "lucide-react"
 import Link from "next/link"
 
 interface Order {
@@ -46,6 +46,10 @@ const paymentColors: Record<string, string> = {
 export function OrdersTable({ orders }: OrdersTableProps) {
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
+  const [updating, setUpdating] = useState<Record<string, boolean>>({})
+  const [tableMsg, setTableMsg] = useState<string | null>(null)
+  const [tableErr, setTableErr] = useState<string | null>(null)
+
   const router = useRouter()
 
   const filteredOrders = orders.filter((order) => {
@@ -58,24 +62,38 @@ export function OrdersTable({ orders }: OrdersTableProps) {
   })
 
   const handleStatusChange = async (orderId: string, newStatus: string) => {
-    const supabase = createClient()
-    await supabase.from("orders").update({ status: newStatus }).eq("id", orderId)
-    router.refresh()
+    setTableMsg(null)
+    setTableErr(null)
+    setUpdating((p) => ({ ...p, [orderId]: true }))
+
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.from("orders").update({ status: newStatus }).eq("id", orderId)
+      if (error) throw error
+
+      setTableMsg("Order status updated.")
+      router.refresh()
+    } catch (e: any) {
+      setTableErr(e?.message || "Failed to update order status.")
+    } finally {
+      setUpdating((p) => ({ ...p, [orderId]: false }))
+    }
   }
 
   return (
     <Card>
       <CardContent className="p-6">
+        <div className="mb-4 flex flex-col gap-2">
+          {tableMsg && <div className="rounded-md border bg-emerald-50 p-3 text-sm text-emerald-800">{tableMsg}</div>}
+          {tableErr && <div className="rounded-md border bg-rose-50 p-3 text-sm text-rose-800">{tableErr}</div>}
+        </div>
+
         <div className="mb-6 flex flex-col gap-4 sm:flex-row">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search orders..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
-            />
+            <Input placeholder="Search orders." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
           </div>
+
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-full sm:w-[180px]">
               <SelectValue placeholder="Status" />
@@ -105,6 +123,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                 <TableHead className="w-[50px]"></TableHead>
               </TableRow>
             </TableHeader>
+
             <TableBody>
               {filteredOrders.length === 0 ? (
                 <TableRow>
@@ -113,60 +132,70 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredOrders.map((order) => (
-                  <TableRow key={order.id}>
-                    <TableCell className="font-medium">{order.order_number}</TableCell>
-                    <TableCell>
-                      <div>
-                        <p className="font-medium">{order.customers?.name || "N/A"}</p>
-                        <p className="text-sm text-muted-foreground">{order.customers?.email}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {new Date(order.created_at).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      <Select value={order.status} onValueChange={(value) => handleStatusChange(order.id, value)}>
-                        <SelectTrigger className="h-8 w-[130px]">
-                          <Badge variant="secondary" className={statusColors[order.status] || ""}>
-                            {order.status}
-                          </Badge>
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="pending">Pending</SelectItem>
-                          <SelectItem value="confirmed">Confirmed</SelectItem>
-                          <SelectItem value="processing">Processing</SelectItem>
-                          <SelectItem value="shipped">Shipped</SelectItem>
-                          <SelectItem value="delivered">Delivered</SelectItem>
-                          <SelectItem value="cancelled">Cancelled</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className={paymentColors[order.payment_status] || ""}>
-                        {order.payment_status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-medium">${order.total?.toFixed(2)}</TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem asChild>
-                            <Link href={`/admin/orders/${order.id}`}>
-                              <Eye className="mr-2 h-4 w-4" />
-                              View Details
-                            </Link>
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))
+                filteredOrders.map((order) => {
+                  const isBusy = !!updating[order.id]
+                  return (
+                    <TableRow key={order.id}>
+                      <TableCell className="font-medium">{order.order_number}</TableCell>
+
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{order.customers?.name || "N/A"}</p>
+                          <p className="text-sm text-muted-foreground">{order.customers?.email}</p>
+                        </div>
+                      </TableCell>
+
+                      <TableCell className="text-muted-foreground">{new Date(order.created_at).toLocaleDateString()}</TableCell>
+
+                      <TableCell>
+                        <Select value={order.status} onValueChange={(value) => handleStatusChange(order.id, value)} disabled={isBusy}>
+                          <SelectTrigger className="h-8 w-[150px]">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="secondary" className={statusColors[order.status] || ""}>
+                                {order.status}
+                              </Badge>
+                              {isBusy && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                            </div>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="confirmed">Confirmed</SelectItem>
+                            <SelectItem value="processing">Processing</SelectItem>
+                            <SelectItem value="shipped">Shipped</SelectItem>
+                            <SelectItem value="delivered">Delivered</SelectItem>
+                            <SelectItem value="cancelled">Cancelled</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+
+                      <TableCell>
+                        <Badge variant="secondary" className={paymentColors[order.payment_status] || ""}>
+                          {order.payment_status}
+                        </Badge>
+                      </TableCell>
+
+                      <TableCell className="font-medium">${order.total?.toFixed(2)}</TableCell>
+
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem asChild>
+                              <Link href={`/admin/orders/${order.id}`}>
+                                <Eye className="mr-2 h-4 w-4" />
+                                View Details
+                              </Link>
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
               )}
             </TableBody>
           </Table>
