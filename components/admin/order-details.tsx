@@ -3,13 +3,14 @@
 import { useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { ArrowLeft, User, MapPin, CreditCard, Package, Loader2, CheckCircle2 } from "lucide-react"
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
-import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, User, MapPin, CreditCard, Loader2, CheckCircle2 } from "lucide-react"
-import Link from "next/link"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
 
 interface Customer {
   id: string
@@ -68,14 +69,24 @@ const paymentColors: Record<string, string> = {
   refunded: "bg-gray-100 text-gray-800",
 }
 
+function Stat({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="rounded-md border bg-background p-2">
+      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="mt-1 font-medium">{value}</div>
+    </div>
+  )
+}
+
 export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
   const router = useRouter()
+
   const [status, setStatus] = useState(order.status)
   const [paymentStatus, setPaymentStatus] = useState(order.payment_status)
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
   const [banner, setBanner] = useState<{ type: "idle" | "success" | "error"; message?: string }>({ type: "idle" })
 
-  // Backorder fulfillment UI state
+  // ✅ must be inside component
   const [fulfillQty, setFulfillQty] = useState<Record<string, number>>({})
   const [isFulfilling, setIsFulfilling] = useState<Record<string, boolean>>({})
   const [actionMsg, setActionMsg] = useState<string | null>(null)
@@ -86,14 +97,8 @@ export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
     setActionErr(null)
 
     const qty = fulfillQty[item.id] ?? 0
-    if (!qty || qty <= 0) {
-      setActionErr("Enter a fulfill quantity greater than 0.")
-      return
-    }
-    if (qty > item.backorder_quantity) {
-      setActionErr(`You can only fulfill up to ${item.backorder_quantity}.`)
-      return
-    }
+    if (!qty || qty <= 0) return setActionErr("Enter a fulfill quantity greater than 0.")
+    if (qty > item.backorder_quantity) return setActionErr(`You can only fulfill up to ${item.backorder_quantity}.`)
 
     setIsFulfilling((p) => ({ ...p, [item.id]: true }))
 
@@ -119,7 +124,7 @@ export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
     if (isUpdatingStatus) return
 
     const prev = status
-    setStatus(newStatus) // optimistic
+    setStatus(newStatus)
     setIsUpdatingStatus(true)
     setBanner({ type: "idle" })
 
@@ -142,11 +147,7 @@ export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
     setPaymentStatus(newStatus)
     const supabase = createClient()
     const { error } = await supabase.from("orders").update({ payment_status: newStatus }).eq("id", order.id)
-    if (error) {
-      setBanner({ type: "error", message: error.message || "Failed to update payment status" })
-      setPaymentStatus(order.payment_status)
-      return
-    }
+    if (error) setBanner({ type: "error", message: error.message || "Failed to update payment status" })
     router.refresh()
   }
 
@@ -198,69 +199,164 @@ export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
         </div>
       </div>
 
-      {banner.type !== "idle" && (
-        <div
-          className={[
-            "mb-4 rounded-md border p-3 text-sm flex items-center gap-2",
-            banner.type === "success" ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800",
-          ].join(" ")}
-        >
-          {banner.type === "success" ? <CheckCircle2 className="h-4 w-4" /> : null}
-          {banner.type === "error" ? <span className="font-medium">Error:</span> : null}
-          <span>{banner.message}</span>
+      {(isUpdatingStatus || banner.type !== "idle") && (
+        <div className="mb-6">
+          {isUpdatingStatus && (
+            <div className="rounded-md border bg-slate-50 p-3 text-sm text-slate-700 flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Updating order status...
+            </div>
+          )}
+          {banner.type === "success" && (
+            <div className="rounded-md border bg-emerald-50 p-3 text-sm text-emerald-800 flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4" />
+              {banner.message || "Success"}
+            </div>
+          )}
+          {banner.type === "error" && (
+            <div className="rounded-md border bg-rose-50 p-3 text-sm text-rose-800">
+              {banner.message || "An error occurred"}
+            </div>
+          )}
         </div>
       )}
-
-      {actionMsg && (
-        <div className="mb-3 rounded-md border bg-emerald-50 p-3 text-sm text-emerald-800 flex items-center gap-2">
-          <CheckCircle2 className="h-4 w-4" />
-          {actionMsg}
-        </div>
-      )}
-      {actionErr && <div className="mb-3 rounded-md border bg-rose-50 p-3 text-sm text-rose-800">{actionErr}</div>}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Loader2 className={isUpdatingStatus ? "h-5 w-5 animate-spin" : "h-5 w-5"} />
+                <Package className="h-5 w-5" />
                 Items
               </CardTitle>
             </CardHeader>
+
             <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full">
+              {actionMsg && (
+                <div className="mb-3 rounded-md border bg-emerald-50 p-3 text-sm text-emerald-800">{actionMsg}</div>
+              )}
+              {actionErr && (
+                <div className="mb-3 rounded-md border bg-rose-50 p-3 text-sm text-rose-800">{actionErr}</div>
+              )}
+
+              {/* ✅ Mobile layout */}
+              <div className="space-y-3 md:hidden">
+                {orderItems.map((item) => (
+                  <Card key={item.id}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="font-medium leading-snug">{item.product_name}</div>
+                        {item.backorder_quantity > 0 ? (
+                          <Badge className="bg-amber-100 text-amber-800 whitespace-nowrap">
+                            Backorder {item.backorder_quantity}
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-emerald-100 text-emerald-800 whitespace-nowrap">Fulfilled</Badge>
+                        )}
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                        <Stat label="Ordered" value={item.quantity} />
+                        <Stat label="Fulfilled" value={item.fulfilled_quantity} />
+                        <Stat label="Remaining" value={item.quantity - item.fulfilled_quantity} />
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                        <Stat label="Price" value={`$${item.unit_price.toFixed(2)}`} />
+                        <Stat label="Line Total" value={`$${item.total.toFixed(2)}`} />
+                      </div>
+
+                      {item.backorder_quantity > 0 && order.status !== "cancelled" ? (
+                        <div className="mt-3 flex items-center gap-2">
+                          <Input
+                            type="number"
+                            min={1}
+                            max={item.backorder_quantity}
+                            value={fulfillQty[item.id] ?? ""}
+                            onChange={(e) =>
+                              setFulfillQty((p) => ({
+                                ...p,
+                                [item.id]: Math.min(
+                                  item.backorder_quantity,
+                                  Math.max(0, Number.parseInt(e.target.value || "0", 10)),
+                                ),
+                              }))
+                            }
+                            className="w-28"
+                            placeholder="Qty"
+                          />
+                          <Button
+                            type="button"
+                            className="flex-1"
+                            onClick={() => handleFulfill(item)}
+                            disabled={!!isFulfilling[item.id]}
+                          >
+                            {isFulfilling[item.id] ? (
+                              <span className="inline-flex items-center gap-2">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Fulfilling...
+                              </span>
+                            ) : (
+                              "Fulfill"
+                            )}
+                          </Button>
+                        </div>
+                      ) : null}
+                    </CardContent>
+                  </Card>
+                ))}
+
+                <div className="rounded-md border p-4 text-sm space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Subtotal</span>
+                    <span className="font-medium">${order.subtotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Tax</span>
+                    <span className="font-medium">${order.tax.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between font-semibold border-t pt-2">
+                    <span>Total</span>
+                    <span>${order.total.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* ✅ Desktop table */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full min-w-[820px]">
                   <thead>
                     <tr className="border-b text-left text-sm font-medium text-muted-foreground">
-                      <th className="pb-3">Product</th>
-                      <th className="pb-3 text-center">Ordered</th>
-                      <th className="pb-3 text-center">Fulfilled</th>
-                      <th className="pb-3 text-center">Backorder</th>
-                      <th className="pb-3 text-right">Price</th>
-                      <th className="pb-3 text-right">Total</th>
-                      <th className="pb-3 text-right">Fulfill</th>
+                      <th className="pb-3 pr-4 whitespace-nowrap">Product</th>
+                      <th className="pb-3 px-2 text-center whitespace-nowrap">Ordered</th>
+                      <th className="pb-3 px-2 text-center whitespace-nowrap">Fulfilled</th>
+                      <th className="pb-3 px-2 text-center whitespace-nowrap">Backorder</th>
+                      <th className="pb-3 px-2 text-right whitespace-nowrap">Price</th>
+                      <th className="pb-3 px-2 text-right whitespace-nowrap">Total</th>
+                      <th className="pb-3 pl-4 text-right whitespace-nowrap">Fulfill</th>
                     </tr>
                   </thead>
 
                   <tbody>
                     {orderItems.map((item) => (
                       <tr key={item.id} className="border-b last:border-0 align-top">
-                        <td className="py-3 font-medium">{item.product_name}</td>
+                        <td className="py-3 pr-4 font-medium">{item.product_name}</td>
 
-                        <td className="py-3 text-center">{item.quantity}</td>
-                        <td className="py-3 text-center">{item.fulfilled_quantity}</td>
-                        <td className="py-3 text-center">
-                          <span className={item.backorder_quantity > 0 ? "text-amber-600 font-medium" : ""}>
-                            {item.backorder_quantity}
-                          </span>
+                        <td className="py-3 px-2 text-center">{item.quantity}</td>
+                        <td className="py-3 px-2 text-center">{item.fulfilled_quantity}</td>
+                        <td className="py-3 px-2 text-center">
+                          {item.backorder_quantity > 0 ? (
+                            <span className="font-medium text-amber-600">{item.backorder_quantity}</span>
+                          ) : (
+                            <span className="text-emerald-700 font-medium">0</span>
+                          )}
                         </td>
 
-                        <td className="py-3 text-right">${item.unit_price.toFixed(2)}</td>
-                        <td className="py-3 text-right font-medium">${item.total.toFixed(2)}</td>
+                        <td className="py-3 px-2 text-right">${item.unit_price.toFixed(2)}</td>
+                        <td className="py-3 px-2 text-right font-medium">${item.total.toFixed(2)}</td>
 
-                        <td className="py-3 text-right">
-                          {item.backorder_quantity > 0 && status !== "cancelled" ? (
+                        <td className="py-3 pl-4 text-right">
+                          {item.backorder_quantity > 0 && order.status !== "cancelled" ? (
                             <div className="flex items-center justify-end gap-2">
                               <Input
                                 type="number"
@@ -276,7 +372,7 @@ export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
                                     ),
                                   }))
                                 }
-                                className="w-20"
+                                className="w-24"
                               />
                               <Button
                                 type="button"
@@ -284,7 +380,14 @@ export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
                                 onClick={() => handleFulfill(item)}
                                 disabled={!!isFulfilling[item.id]}
                               >
-                                {isFulfilling[item.id] ? "..." : "Fulfill"}
+                                {isFulfilling[item.id] ? (
+                                  <span className="inline-flex items-center gap-2">
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    ...
+                                  </span>
+                                ) : (
+                                  "Fulfill"
+                                )}
                               </Button>
                             </div>
                           ) : (
@@ -300,22 +403,25 @@ export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
                       <td colSpan={5} className="py-3 text-right text-muted-foreground">
                         Subtotal
                       </td>
-                      <td className="py-3 text-right">${order.subtotal.toFixed(2)}</td>
-                      <td />
+                      <td colSpan={2} className="py-3 text-right font-medium">
+                        ${order.subtotal.toFixed(2)}
+                      </td>
                     </tr>
                     <tr>
                       <td colSpan={5} className="py-1 text-right text-muted-foreground">
                         Tax
                       </td>
-                      <td className="py-1 text-right">${order.tax.toFixed(2)}</td>
-                      <td />
+                      <td colSpan={2} className="py-1 text-right font-medium">
+                        ${order.tax.toFixed(2)}
+                      </td>
                     </tr>
                     <tr className="font-semibold">
                       <td colSpan={5} className="py-3 text-right">
                         Total
                       </td>
-                      <td className="py-3 text-right">${order.total.toFixed(2)}</td>
-                      <td />
+                      <td colSpan={2} className="py-3 text-right">
+                        ${order.total.toFixed(2)}
+                      </td>
                     </tr>
                   </tfoot>
                 </table>
@@ -390,8 +496,8 @@ export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Status</span>
-                  <Badge variant="secondary" className={paymentColors[paymentStatus] || ""}>
-                    {paymentStatus}
+                  <Badge variant="secondary" className={paymentColors[order.payment_status] || ""}>
+                    {order.payment_status}
                   </Badge>
                 </div>
               </div>
