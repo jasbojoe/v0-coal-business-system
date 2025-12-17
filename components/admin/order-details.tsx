@@ -138,18 +138,51 @@ export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
       return
     }
 
+    await supabase.rpc("log_activity", {
+      p_action: "order_status_changed",
+      p_entity_type: "order",
+      p_entity_id: order.id,
+      p_details: {
+        order_number: order.order_number,
+        from: prev,
+        to: newStatus,
+      },
+    })
+
+
     setBanner({ type: "success", message: "Order status updated." })
     setIsUpdatingStatus(false)
     router.refresh()
   }
 
   const handlePaymentStatusChange = async (newStatus: string) => {
+    const prev = paymentStatus
     setPaymentStatus(newStatus)
+
     const supabase = createClient()
     const { error } = await supabase.from("orders").update({ payment_status: newStatus }).eq("id", order.id)
-    if (error) setBanner({ type: "error", message: error.message || "Failed to update payment status" })
+
+    if (error) {
+      setPaymentStatus(prev)
+      setBanner({ type: "error", message: error.message || "Failed to update payment status" })
+      return
+    }
+
+    await supabase.rpc("log_activity", {
+      p_action: "order_payment_status_changed",
+      p_entity_type: "order",
+      p_entity_id: order.id,
+      p_details: {
+        order_number: order.order_number,
+        from: prev,
+        to: newStatus,
+      },
+    })
+
+    setBanner({ type: "success", message: "Payment status updated." })
     router.refresh()
   }
+
 
   return (
     <div>

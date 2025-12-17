@@ -173,6 +173,20 @@ export function OrderForm({ customers, products }: OrderFormProps) {
 
       if (orderError) throw orderError
 
+      await supabase.rpc("log_activity", {
+        p_action: "order_created",
+        p_entity_type: "order",
+        p_entity_id: order.id,
+        p_details: {
+          order_number: order.order_number,
+          subtotal,
+          tax,
+          total,
+          item_count: orderItems.length,
+        },
+      })
+
+
       const { error: itemsError } = await supabase.from("order_items").insert(
         orderItems.map((item) => ({
           order_id: order.id,
