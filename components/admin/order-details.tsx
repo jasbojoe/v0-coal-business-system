@@ -4,7 +4,16 @@ import { useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, User, MapPin, CreditCard, Package, Loader2, CheckCircle2 } from "lucide-react"
+import {
+  ArrowLeft,
+  User,
+  MapPin,
+  CreditCard,
+  Package,
+  Loader2,
+  CheckCircle2,
+  Ban,
+} from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -86,11 +95,16 @@ export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
   const [banner, setBanner] = useState<{ type: "idle" | "success" | "error"; message?: string }>({ type: "idle" })
 
-  // ✅ must be inside component
+  // fulfillment states
   const [fulfillQty, setFulfillQty] = useState<Record<string, number>>({})
   const [isFulfilling, setIsFulfilling] = useState<Record<string, boolean>>({})
   const [actionMsg, setActionMsg] = useState<string | null>(null)
   const [actionErr, setActionErr] = useState<string | null>(null)
+
+  // cancel order states
+  const [isCancelling, setIsCancelling] = useState(false)
+  const [cancelErr, setCancelErr] = useState<string | null>(null)
+  const [cancelMsg, setCancelMsg] = useState<string | null>(null)
 
   const handleFulfill = async (item: OrderItem) => {
     setActionMsg(null)
@@ -149,7 +163,6 @@ export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
       },
     })
 
-
     setBanner({ type: "success", message: "Order status updated." })
     setIsUpdatingStatus(false)
     router.refresh()
@@ -183,6 +196,42 @@ export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
     router.refresh()
   }
 
+  const handleCancelOrder = async () => {
+    setCancelErr(null)
+    setCancelMsg(null)
+
+    if (status === "cancelled") return
+    if (status === "delivered") {
+      setCancelErr("Delivered orders cannot be cancelled.")
+      return
+    }
+
+    const ok = window.confirm(
+      `Cancel order ${order.order_number}?\n\nThis will reverse any fulfilled stock back into inventory.`,
+    )
+    if (!ok) return
+
+    const reason = window.prompt("Reason for cancellation (optional):", "Cancelled by admin") || "Cancelled by admin"
+
+    setIsCancelling(true)
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.rpc("cancel_order", {
+        p_order_id: order.id,
+        p_reason: reason,
+      })
+      if (error) throw error
+
+      setCancelMsg("Order cancelled. Fulfilled stock was reversed back to inventory.")
+      setStatus("cancelled")
+      setBanner({ type: "success", message: "Order cancelled." })
+      router.refresh()
+    } catch (e: any) {
+      setCancelErr(e?.message || "Failed to cancel order.")
+    } finally {
+      setIsCancelling(false)
+    }
+  }
 
   return (
     <div>
@@ -199,8 +248,8 @@ export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
           <p className="text-muted-foreground">{new Date(order.created_at).toLocaleString()}</p>
         </div>
 
-        <div className="flex gap-2">
-          <Select value={status} onValueChange={handleStatusChange} disabled={isUpdatingStatus}>
+        <div className="flex flex-wrap gap-2 items-center justify-end">
+          <Select value={status} onValueChange={handleStatusChange} disabled={isUpdatingStatus || status === "cancelled"}>
             <SelectTrigger className="w-[150px]">
               <Badge variant="secondary" className={statusColors[status] || ""}>
                 {status}
@@ -216,7 +265,7 @@ export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
             </SelectContent>
           </Select>
 
-          <Select value={paymentStatus} onValueChange={handlePaymentStatusChange} disabled={isUpdatingStatus}>
+          <Select value={paymentStatus} onValueChange={handlePaymentStatusChange} disabled={isUpdatingStatus || status === "cancelled"}>
             <SelectTrigger className="w-[150px]">
               <Badge variant="secondary" className={paymentColors[paymentStatus] || ""}>
                 {paymentStatus}
@@ -229,15 +278,27 @@ export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
               <SelectItem value="refunded">Refunded</SelectItem>
             </SelectContent>
           </Select>
+
+          {/* ✅ Cancel button */}
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={handleCancelOrder}
+            disabled={isCancelling || status === "cancelled" || status === "delivered"}
+            className="gap-2"
+          >
+            {isCancelling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
+            {status === "cancelled" ? "Cancelled" : "Cancel"}
+          </Button>
         </div>
       </div>
 
-      {(isUpdatingStatus || banner.type !== "idle") && (
-        <div className="mb-6">
+      {(isUpdatingStatus || banner.type !== "idle" || cancelMsg || cancelErr) && (
+        <div className="mb-6 space-y-2">
           {isUpdatingStatus && (
             <div className="rounded-md border bg-slate-50 p-3 text-sm text-slate-700 flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Updating order status...
+              Updating order...
             </div>
           )}
           {banner.type === "success" && (
@@ -251,6 +312,8 @@ export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
               {banner.message || "An error occurred"}
             </div>
           )}
+          {cancelMsg && <div className="rounded-md border bg-emerald-50 p-3 text-sm text-emerald-800">{cancelMsg}</div>}
+          {cancelErr && <div className="rounded-md border bg-rose-50 p-3 text-sm text-rose-800">{cancelErr}</div>}
         </div>
       )}
 
@@ -299,7 +362,7 @@ export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
                         <Stat label="Line Total" value={`$${item.total.toFixed(2)}`} />
                       </div>
 
-                      {item.backorder_quantity > 0 && order.status !== "cancelled" ? (
+                      {item.backorder_quantity > 0 && status !== "cancelled" ? (
                         <div className="mt-3 flex items-center gap-2">
                           <Input
                             type="number"
@@ -338,21 +401,6 @@ export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
                     </CardContent>
                   </Card>
                 ))}
-
-                <div className="rounded-md border p-4 text-sm space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Subtotal</span>
-                    <span className="font-medium">${order.subtotal.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Tax</span>
-                    <span className="font-medium">${order.tax.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between font-semibold border-t pt-2">
-                    <span>Total</span>
-                    <span>${order.total.toFixed(2)}</span>
-                  </div>
-                </div>
               </div>
 
               {/* ✅ Desktop table */}
@@ -389,7 +437,7 @@ export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
                         <td className="py-3 px-2 text-right font-medium">${item.total.toFixed(2)}</td>
 
                         <td className="py-3 pl-4 text-right">
-                          {item.backorder_quantity > 0 && order.status !== "cancelled" ? (
+                          {item.backorder_quantity > 0 && status !== "cancelled" ? (
                             <div className="flex items-center justify-end gap-2">
                               <Input
                                 type="number"
@@ -430,33 +478,6 @@ export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
                       </tr>
                     ))}
                   </tbody>
-
-                  <tfoot>
-                    <tr className="border-t">
-                      <td colSpan={5} className="py-3 text-right text-muted-foreground">
-                        Subtotal
-                      </td>
-                      <td colSpan={2} className="py-3 text-right font-medium">
-                        ${order.subtotal.toFixed(2)}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td colSpan={5} className="py-1 text-right text-muted-foreground">
-                        Tax
-                      </td>
-                      <td colSpan={2} className="py-1 text-right font-medium">
-                        ${order.tax.toFixed(2)}
-                      </td>
-                    </tr>
-                    <tr className="font-semibold">
-                      <td colSpan={5} className="py-3 text-right">
-                        Total
-                      </td>
-                      <td colSpan={2} className="py-3 text-right">
-                        ${order.total.toFixed(2)}
-                      </td>
-                    </tr>
-                  </tfoot>
                 </table>
               </div>
             </CardContent>

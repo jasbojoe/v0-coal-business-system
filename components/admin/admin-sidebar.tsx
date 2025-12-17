@@ -16,6 +16,7 @@ import {
   Settings,
   ChevronLeft,
   MessageSquare,
+  Activity,
 } from "lucide-react"
 import type { User } from "@supabase/supabase-js"
 
@@ -41,6 +42,10 @@ const navItems = [
   { href: "/admin/inventory", icon: Warehouse, label: "Inventory", color: "from-rose-500 to-pink-500" },
   { href: "/admin/staff", icon: UserCog, label: "Staff", color: "from-indigo-500 to-blue-500" },
   { href: "/admin/inquiries", icon: MessageSquare, label: "Inquiries", color: "from-teal-500 to-emerald-500" },
+
+  // ✅ NEW
+  { href: "/admin/activity", icon: Activity, label: "Activity Logs", color: "from-sky-500 to-blue-600" },
+
   { href: "/admin/reports", icon: BarChart3, label: "Reports", color: "from-fuchsia-500 to-pink-500" },
   { href: "/admin/settings", icon: Settings, label: "Settings", color: "from-slate-500 to-slate-600" },
 ]
