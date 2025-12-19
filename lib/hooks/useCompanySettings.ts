@@ -13,6 +13,9 @@ export type CompanySettings = {
   country: string | null
   website: string | null
   logo_url: string | null
+  logo_light_url: string | null
+  logo_dark_url: string | null
+
 }
 
 export function useCompanySettings() {
@@ -26,7 +29,7 @@ export function useCompanySettings() {
     async function load() {
       const { data, error } = await supabase
         .from("company_settings")
-        .select("id, company_name, business_email, phone, address, city, country, website, logo_url")
+        .select("id, company_name, business_email, phone, address, city, country, website, logo_url, logo_light_url, logo_dark_url")
         .limit(1)
         .single()
 
@@ -44,3 +47,4 @@ export function useCompanySettings() {
 
   return { data, loading }
 }
+
