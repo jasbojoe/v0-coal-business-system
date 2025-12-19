@@ -1,11 +1,16 @@
+"use client"
+
 import Link from "next/link"
 import Image from "next/image"
 import { Facebook, Twitter, Instagram, Linkedin } from "lucide-react"
+import { useCompanySettings } from "@/lib/hooks/useCompanySettings"
 
-const LOGO_WHITE = "/images/wiyone-logo-blacktext.svg"
 const ENVIR_LOGO = "/images/envir-logo.svg"
 const SIERRA_LEONE_ICON = "/images/sierra-leone-icon.png"
 const COALS_BANNER = "/images/coalsartboard-1-201.png"
+
+// local fallback
+const FALLBACK_FOOTER_LOGO = "/images/wiyone-logo-blacktext.svg"
 
 const footerLinks = {
   company: [
@@ -27,6 +32,16 @@ const socialLinks = [
 ]
 
 export function Footer() {
+  const { data: company } = useCompanySettings()
+
+  const brandName = company?.company_name || "Wiyone Charcoal"
+
+  // For footer (dark background), prefer light logo if you have it
+  const footerLogo =
+    company?.logo_light_url || company?.logo_url || FALLBACK_FOOTER_LOGO
+
+  const locationLine = [company?.address, company?.city, company?.country].filter(Boolean).join(", ")
+
   return (
     <footer className="relative bg-slate-900 overflow-hidden">
       {/* Coal banner */}
@@ -46,17 +61,39 @@ export function Footer() {
           {/* Brand */}
           <div className="md:col-span-2">
             <Image
-              src={LOGO_WHITE || "/placeholder.svg"}
-              alt="Wiyone Charcoal"
+              src={footerLogo || "/placeholder.svg"}
+              alt={brandName}
               width={140}
               height={70}
               className="h-14 w-auto"
               unoptimized
             />
+
             <p className="mt-4 max-w-sm text-sm text-slate-400 leading-relaxed">
               Premium, eco-friendly charcoal crafted from renewable waste. Cleaner, longer-lasting fuel for homes and
               businesses.
             </p>
+
+            {/* ✅ Dynamic company info */}
+            <div className="mt-4 space-y-1 text-sm text-slate-400">
+              {company?.phone ? <p>📞 {company.phone}</p> : null}
+              {company?.business_email ? <p>✉️ {company.business_email}</p> : null}
+              {locationLine ? <p>📍 {locationLine}</p> : null}
+              {company?.website ? (
+                <p>
+                  🌐{" "}
+                  <a
+                    href={company.website}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline underline-offset-4 hover:text-teal-300"
+                  >
+                    {company.website}
+                  </a>
+                </p>
+              ) : null}
+            </div>
+
             <div className="mt-5 flex gap-2">
               {socialLinks.map((social) => (
                 <a
@@ -84,6 +121,7 @@ export function Footer() {
               ))}
             </ul>
           </div>
+
           <div>
             <h3 className="text-sm font-medium text-white">Legal</h3>
             <ul className="mt-3 space-y-2">
