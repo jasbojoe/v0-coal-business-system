@@ -5,31 +5,44 @@ import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Menu, X } from "lucide-react"
+import { useCompanySettings } from "@/lib/hooks/useCompanySettings"
 
 const navLinks = [
   { href: "#home", label: "Home" },
   { href: "#about", label: "About" },
-  { href: "/products", label: "Products" },   // 👈 now separate page
+  { href: "/products", label: "Products" }, // separate page
   { href: "#contact", label: "Contact" },
 ]
 
-// 👇 CLEAR NAMES:
-// - LOGO_DARK_BG: used when header sits on a DARK background (hero)
-// - LOGO_LIGHT_BG: used when header has a WHITE/light background
-const LOGO_DARK_BG = "/images/wiyone-logo-whitetext.svg"  // white text logo
-const LOGO_LIGHT_BG = "/images/wiyone-logo-blacktext.svg" // dark text logo
+// Local fallbacks (your current ones)
+const FALLBACK_LOGO_LIGHT = "/images/wiyone-logo-whitetext.svg" // for dark/hero bg
+const FALLBACK_LOGO_DARK = "/images/wiyone-logo-blacktext.svg"  // for white/scrolled bg
 
 export function Header() {
+  const { data: company } = useCompanySettings()
+
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isScrolled, setIsScrolled] = useState(false)
 
   useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 50)
-    }
+    const handleScroll = () => setIsScrolled(window.scrollY > 50)
     window.addEventListener("scroll", handleScroll)
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
+
+  // ✅ DB-driven logo switching:
+  // - not scrolled (hero/dark background): use logo_light_url
+  // - scrolled (white background): use logo_dark_url
+  //
+  // fallback order:
+  // 1) logo_light_url / logo_dark_url
+  // 2) logo_url (single logo if you only set one)
+  // 3) local fallback svg
+  const lightLogo = company?.logo_light_url || company?.logo_url || FALLBACK_LOGO_LIGHT
+  const darkLogo = company?.logo_dark_url || company?.logo_url || FALLBACK_LOGO_DARK
+  const logoSrc = isScrolled ? darkLogo : lightLogo
+
+  const brandName = company?.company_name || "Wiyone Charcoal"
 
   return (
     <header
@@ -42,10 +55,8 @@ export function Header() {
           {/* Logo */}
           <Link href="/" className="flex items-center">
             <Image
-              // 👇 IMPORTANT: when scrolled (white header) → dark logo
-              // not scrolled (hero dark) → white logo
-              src={isScrolled ? LOGO_LIGHT_BG : LOGO_DARK_BG}
-              alt="Wiyone Charcoal"
+              src={logoSrc}
+              alt={brandName}
               width={140}
               height={70}
               className="h-10 w-auto"
@@ -67,19 +78,14 @@ export function Header() {
                 {link.label}
               </a>
             ))}
-            <Button
-              asChild
-              className={isScrolled ? "" : "bg-white text-slate-900 hover:bg-slate-100"}
-            >
+            <Button asChild className={isScrolled ? "" : "bg-white text-slate-900 hover:bg-slate-100"}>
               <a href="#contact">Get Quote</a>
             </Button>
           </nav>
 
           {/* Mobile menu button */}
           <button
-            className={`md:hidden ${
-              isScrolled ? "text-slate-900" : "text-white"
-            }`}
+            className={`md:hidden ${isScrolled ? "text-slate-900" : "text-white"}`}
             onClick={() => setIsMenuOpen((prev) => !prev)}
             aria-label="Toggle menu"
           >
@@ -101,18 +107,12 @@ export function Header() {
                 key={link.href}
                 href={link.href}
                 onClick={() => setIsMenuOpen(false)}
-                className={`block text-base font-medium ${
-                  isScrolled ? "text-slate-900" : "text-white"
-                }`}
+                className={`block text-base font-medium ${isScrolled ? "text-slate-900" : "text-white"}`}
               >
                 {link.label}
               </a>
             ))}
-            <Button
-              asChild
-              className="w-full"
-              variant={isScrolled ? "default" : "secondary"}
-            >
+            <Button asChild className="w-full" variant={isScrolled ? "default" : "secondary"}>
               <a href="#contact" onClick={() => setIsMenuOpen(false)}>
                 Get Quote
               </a>
