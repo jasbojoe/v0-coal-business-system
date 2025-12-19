@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 
 export type CompanySettings = {
@@ -16,7 +16,7 @@ export type CompanySettings = {
 }
 
 export function useCompanySettings() {
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
   const [data, setData] = useState<CompanySettings | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -26,12 +26,14 @@ export function useCompanySettings() {
     async function load() {
       const { data, error } = await supabase
         .from("company_settings")
-        .select("*")
+        .select("id, company_name, business_email, phone, address, city, country, website, logo_url")
         .limit(1)
         .single()
 
-      if (!error && mounted) setData(data)
-      if (mounted) setLoading(false)
+      if (mounted) {
+        if (!error && data) setData(data as CompanySettings)
+        setLoading(false)
+      }
     }
 
     load()
