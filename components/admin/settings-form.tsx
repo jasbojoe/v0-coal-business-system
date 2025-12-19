@@ -43,6 +43,13 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState({ type: "", text: "" })
 
+  // Upload state
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+
+  const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url || "")
+  const [companyLogoUrl, setCompanyLogoUrl] = useState(companySettings?.logo_url || "")
+
   // Profile settings
   const [fullName, setFullName] = useState(profile?.full_name || "")
 
@@ -64,6 +71,65 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
   const [companyCity, setCompanyCity] = useState(companySettings?.city || "")
   const [companyCountry, setCompanyCountry] = useState(companySettings?.country || "")
   const [companyWebsite, setCompanyWebsite] = useState(companySettings?.website || "")
+
+  const uploadAvatar = async (file: File) => {
+    setUploadingAvatar(true)
+    setMessage({ type: "", text: "" })
+    try {
+      const form = new FormData()
+      form.append("file", file)
+
+      const resp = await fetch("/api/upload-avatar-image", {
+        method: "POST",
+        body: form,
+      })
+
+      const json = await resp.json().catch(() => ({}))
+      if (!resp.ok) throw new Error(json?.error || "Failed to upload avatar")
+
+      const url = json?.url as string
+      if (!url) throw new Error("Upload failed: missing URL")
+
+      const { error } = await supabase.from("profiles").update({ avatar_url: url }).eq("id", user.id)
+      if (error) throw error
+
+      setAvatarUrl(url)
+      setMessage({ type: "success", text: "Avatar updated successfully" })
+      router.refresh()
+    } catch (err: any) {
+      setMessage({ type: "error", text: err?.message || "Failed to upload avatar" })
+    } finally {
+      setUploadingAvatar(false)
+    }
+  }
+
+  const uploadCompanyLogo = async (file: File) => {
+    setUploadingLogo(true)
+    setMessage({ type: "", text: "" })
+    try {
+      const form = new FormData()
+      form.append("file", file)
+
+      const resp = await fetch("/api/upload-company-logo", {
+        method: "POST",
+        body: form,
+      })
+
+      const json = await resp.json().catch(() => ({}))
+      if (!resp.ok) throw new Error(json?.error || "Failed to upload company logo")
+
+      const url = json?.url as string
+      if (!url) throw new Error("Upload failed: missing URL")
+
+      // Store the URL and also persist it when saving company settings.
+      setCompanyLogoUrl(url)
+      setMessage({ type: "success", text: "Logo uploaded. Click 'Save Company Info' to publish it." })
+    } catch (err: any) {
+      setMessage({ type: "error", text: err?.message || "Failed to upload company logo" })
+    } finally {
+      setUploadingLogo(false)
+    }
+  }
 
   const updateProfile = async () => {
     setLoading(true)
@@ -128,6 +194,7 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
         city: companyCity,
         country: companyCountry,
         website: companyWebsite,
+        logo_url: companyLogoUrl || null,
         updated_at: new Date().toISOString(),
       }
 
@@ -190,6 +257,39 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
             <CardDescription>Update your personal information</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Profile Photo</Label>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="h-16 w-16 overflow-hidden rounded-full border bg-muted">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={avatarUrl || "/placeholder.svg"}
+                    alt="Avatar"
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+
+                <div className="flex-1">
+                  <Input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    disabled={uploadingAvatar || loading}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (!file) return
+                      void uploadAvatar(file)
+                      e.currentTarget.value = ""
+                    }}
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">JPG, PNG, or WEBP. Max 5MB.</p>
+                </div>
+
+                <div className="text-xs text-muted-foreground sm:w-[110px] sm:text-right">
+                  {uploadingAvatar ? "Uploading…" : ""}
+                </div>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="email">Email Address</Label>
               <Input id="email" type="email" value={user.email || ""} disabled />
@@ -325,6 +425,41 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Company Logo</Label>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="h-16 w-16 overflow-hidden rounded border bg-muted">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={companyLogoUrl || "/placeholder.svg"}
+                    alt="Company logo"
+                    className="h-full w-full object-contain p-1"
+                  />
+                </div>
+
+                <div className="flex-1">
+                  <Input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    disabled={uploadingLogo || loading}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (!file) return
+                      void uploadCompanyLogo(file)
+                      e.currentTarget.value = ""
+                    }}
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    JPG, PNG, WEBP, or SVG. Max 5MB. Upload then click "Save Company Info".
+                  </p>
+                </div>
+
+                <div className="text-xs text-muted-foreground sm:w-[110px] sm:text-right">
+                  {uploadingLogo ? "Uploading…" : ""}
+                </div>
+              </div>
+            </div>
+
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="companyName">Company Name</Label>
