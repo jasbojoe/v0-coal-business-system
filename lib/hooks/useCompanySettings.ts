@@ -47,4 +47,3 @@ export function useCompanySettings() {
 
   return { data, loading }
 }
-
