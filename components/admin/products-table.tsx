@@ -19,6 +19,7 @@ interface Product {
   sku: string
   unit_price: number
   stock_quantity: number
+  reserved_quantity: number
   min_stock_level: number
   is_active: boolean
   product_categories: { name: string } | null
@@ -113,11 +114,22 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
                     </TableCell>
                     <TableCell>${product.unit_price.toFixed(2)}</TableCell>
                     <TableCell>
-                      <span
-                        className={product.stock_quantity <= product.min_stock_level ? "text-red-600 font-medium" : ""}
-                      >
-                        {product.stock_quantity}
-                      </span>
+                      {(() => {
+                        const reserved = Number(product.reserved_quantity ?? 0)
+                        const stock = Number(product.stock_quantity ?? 0)
+                        const available = stock - reserved
+                    
+                        return (
+                          <div className="space-y-0.5">
+                            <div className={available <= product.min_stock_level ? "text-red-600 font-medium" : ""}>
+                              {available} <span className="text-xs text-muted-foreground">available</span>
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Stock: {stock} • Reserved: {reserved}
+                            </div>
+                          </div>
+                        )
+                      })()}
                     </TableCell>
                     <TableCell>
                       <Badge
