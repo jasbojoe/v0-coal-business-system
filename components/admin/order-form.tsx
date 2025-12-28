@@ -24,6 +24,7 @@ interface Product {
   name: string
   unit_price: number
   stock_quantity: number
+  reserved_quantity: number
 }
 
 interface OrderFormProps {
@@ -69,7 +70,7 @@ export function OrderForm({ customers, products }: OrderFormProps) {
   const fetchLatestProduct = async (productId: string) => {
     const { data, error } = await supabase
       .from("products")
-      .select("id, name, unit_price, stock_quantity")
+      .select("id, name, unit_price, stock_quantity, reserved_quantity")
       .eq("id", productId)
       .single()
 
@@ -86,7 +87,7 @@ export function OrderForm({ customers, products }: OrderFormProps) {
 
     try {
       const latest = await fetchLatestProduct(productId)
-      const available = Number(latest.stock_quantity ?? 0)
+      const available = Number(latest.stock_quantity ?? 0) - Number(latest.reserved_quantity ?? 0)
 
       setOrderItems((prev) => {
         const next = [...prev]
@@ -258,7 +259,13 @@ export function OrderForm({ customers, products }: OrderFormProps) {
                             <SelectContent>
                               {products.map((product) => (
                                 <SelectItem key={product.id} value={product.id}>
-                                  {product.name} - ${product.unit_price} (Stock: {product.stock_quantity})
+                                  {(() => {
+                                    const stock = Number(product.stock_quantity ?? 0)
+                                    const reserved = Number(product.reserved_quantity ?? 0)
+                                    const available = stock - reserved
+                                    return `${product.name} - $${product.unit_price} (Available: ${available})`
+                                  })()}
+
                                 </SelectItem>
                               ))}
                             </SelectContent>
