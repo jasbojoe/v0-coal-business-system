@@ -17,7 +17,7 @@ export function RecordPaymentModal({
   orderNumber,
   balanceDue,
   onRecorded,
-}: {
+}: { 
   open: boolean
   onOpenChange: (open: boolean) => void
   orderId: string
