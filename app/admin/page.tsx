@@ -26,10 +26,10 @@ export default async function AdminDashboardPage() {
     .filter((product) => product.stock_quantity <= product.min_stock_level)
     .slice(0, 5)
 
-  // Calculate total revenue from orders
-  const { data: ordersForRevenue } = await supabase.from("orders").select("total").eq("payment_status", "paid")
+  // Revenue = money received (sum of payments)
+  const { data: paymentsForRevenue } = await supabase.from("payments").select("amount")
 
-  const totalRevenue = ordersForRevenue?.reduce((sum, order) => sum + (order.total || 0), 0) || 0
+  const totalRevenue = paymentsForRevenue?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0
 
   return (
     <div className="space-y-6">
