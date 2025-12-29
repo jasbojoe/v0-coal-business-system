@@ -1,149 +1,94 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { useState } from "react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2 } from "lucide-react"
 import { recordPayment } from "@/app/actions/payments"
 
 export function RecordPaymentModal({
-  open,
-  onOpenChange,
   orderId,
-  orderNumber,
   balanceDue,
-  onRecorded,
-}: { 
-  open: boolean
-  onOpenChange: (open: boolean) => void
+  open,
+  onClose,
+}: {
   orderId: string
-  orderNumber: string
   balanceDue: number
-  onRecorded?: () => void
+  open: boolean
+  onClose: () => void
 }) {
   const [amount, setAmount] = useState("")
-  const [method, setMethod] = useState<string>("cash")
+  const [method, setMethod] = useState("Cash")
   const [reference, setReference] = useState("")
   const [notes, setNotes] = useState("")
-  const [isSaving, setIsSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
 
-  const numericAmount = useMemo(() => Number(amount || 0), [amount])
-  const canSave = numericAmount > 0 && numericAmount <= balanceDue && !isSaving
+  async function submit() {
+    const value = Number(amount)
+    if (!Number.isFinite(value) || value <= 0) return
+    if (value > balanceDue) return
 
-  const close = (nextOpen: boolean) => {
-    onOpenChange(nextOpen)
-    if (!nextOpen) {
+    setLoading(true)
+    try {
+      await recordPayment(orderId, value, method, reference || null, notes || null)
+      onClose()
       setAmount("")
-      setMethod("cash")
       setReference("")
       setNotes("")
-      setError(null)
-    }
-  }
-
-  async function handleSave() {
-    setError(null)
-    if (!canSave) {
-      if (numericAmount <= 0) return setError("Enter an amount greater than 0.")
-      if (numericAmount > balanceDue) return setError(`Amount cannot exceed balance due ($${balanceDue.toFixed(2)}).`)
-      return
-    }
-
-    setIsSaving(true)
-    try {
-      await recordPayment({
-        orderId,
-        amount: numericAmount,
-        paymentMethod: method,
-        reference: reference || null,
-        notes: notes || null,
-      })
-      close(false)
-      onRecorded?.()
-    } catch (e: any) {
-      setError(e?.message || "Failed to record payment.")
+      setMethod("Cash")
     } finally {
-      setIsSaving(false)
+      setLoading(false)
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={close}>
-      <DialogContent className="sm:max-w-[520px]">
+    <Dialog open={open} onOpenChange={(v) => (!v ? onClose() : undefined)}>
+      <DialogContent>
         <DialogHeader>
-          <DialogTitle>Record Payment — {orderNumber}</DialogTitle>
+          <DialogTitle>Record Payment</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
-          {error ? <div className="rounded-md border bg-rose-50 p-3 text-sm text-rose-800">{error}</div> : null}
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="amount">Amount</Label>
-              <Input
-                id="amount"
-                type="number"
-                inputMode="decimal"
-                placeholder="e.g. 250"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                min={0}
-              />
-              <p className="text-xs text-muted-foreground">Balance due: ${balanceDue.toFixed(2)}</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Payment Method</Label>
-              <Select value={method} onValueChange={setMethod}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select method" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cash">Cash</SelectItem>
-                  <SelectItem value="mobile_money">Mobile Money</SelectItem>
-                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                  <SelectItem value="card">Card</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="text-sm text-muted-foreground">
+            Balance due: <span className="font-medium">${balanceDue.toFixed(2)}</span>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="reference">Reference (optional)</Label>
-            <Input
-              id="reference"
-              placeholder="Transaction ID / MoMo ref / Bank ref"
-              value={reference}
-              onChange={(e) => setReference(e.target.value)}
-            />
-          </div>
+          <Input
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="Amount"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
 
-          <div className="space-y-2">
-            <Label htmlFor="notes">Notes (optional)</Label>
-            <Textarea id="notes" placeholder="Anything helpful for the audit trail" value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </div>
+          <select
+            className="w-full border rounded px-3 py-2 bg-background"
+            value={method}
+            onChange={(e) => setMethod(e.target.value)}
+          >
+            <option value="Cash">Cash</option>
+            <option value="Mobile Money">Mobile Money</option>
+            <option value="Bank Transfer">Bank Transfer</option>
+            <option value="Card">Card</option>
+          </select>
+
+          <Input
+            placeholder="Reference (optional)"
+            value={reference}
+            onChange={(e) => setReference(e.target.value)}
+          />
+
+          <Input
+            placeholder="Notes (optional)"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
+
+          <Button onClick={submit} disabled={loading}>
+            {loading ? "Saving..." : "Save Payment"}
+          </Button>
         </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => close(false)} disabled={isSaving}>
-            Cancel
-          </Button>
-          <Button onClick={handleSave} disabled={!canSave}>
-            {isSaving ? (
-              <span className="inline-flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Saving...
-              </span>
-            ) : (
-              "Save Payment"
-            )}
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
