@@ -1,51 +1,173 @@
 "use client"
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
+import { useState } from "react"
+import { createClient } from "@/lib/supabase/client"
+import { useRouter } from "next/navigation"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
+import { Card, CardContent } from "@/components/ui/card"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { MoreHorizontal, Pencil, Trash2, Search } from "lucide-react"
+import Link from "next/link"
 
-// Sample data - in production this would come from the database
-const data = [
-  { month: "Jan", sales: 4000 },
-  { month: "Feb", sales: 3000 },
-  { month: "Mar", sales: 5000 },
-  { month: "Apr", sales: 4500 },
-  { month: "May", sales: 6000 },
-  { month: "Jun", sales: 5500 },
-  { month: "Jul", sales: 7000 },
-]
+interface Product {
+  id: string
+  name: string
+  sku: string
+  unit_price: number
+  stock_quantity: number
+  reserved_quantity: number
+  min_stock_level: number
+  is_active: boolean
+  product_categories: { name: string } | null
+}
 
-export function SalesChart() {
+interface Category {
+  id: string
+  name: string
+}
+
+interface ProductsTableProps {
+  products: Product[]
+  categories: Category[]
+}
+
+export function ProductsTable({ products, categories }: ProductsTableProps) {
+  const [search, setSearch] = useState("")
+  const [categoryFilter, setCategoryFilter] = useState("all")
+  const router = useRouter()
+
+  const filteredProducts = products.filter((product) => {
+    const matchesSearch =
+      product.name.toLowerCase().includes(search.toLowerCase()) ||
+      product.sku.toLowerCase().includes(search.toLowerCase())
+    const matchesCategory = categoryFilter === "all" || product.product_categories?.name === categoryFilter
+    return matchesSearch && matchesCategory
+  })
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this product?")) return
+
+    const supabase = createClient()
+    await supabase.from("products").delete().eq("id", id)
+    router.refresh()
+  }
+
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Sales Overview</CardTitle>
-        <CardDescription>Monthly sales performance</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="h-[300px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data}>
-              <defs>
-                <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#E86A33" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#E86A33" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-              <XAxis dataKey="month" axisLine={false} tickLine={false} className="text-xs" />
-              <YAxis axisLine={false} tickLine={false} className="text-xs" tickFormatter={(value) => `$${value}`} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "hsl(var(--card))",
-                  border: "1px solid hsl(var(--border))",
-                  borderRadius: "8px",
-                }}
-                labelStyle={{ color: "hsl(var(--foreground))" }}
-                formatter={(value: number) => [`$${value}`, "Sales"]}
-              />
-              <Area type="monotone" dataKey="sales" stroke="#E86A33" strokeWidth={2} fill="url(#salesGradient)" />
-            </AreaChart>
-          </ResponsiveContainer>
+      <CardContent className="p-6">
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search products..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="w-full sm:w-[180px]">
+              <SelectValue placeholder="Category" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              {categories.map((category) => (
+                <SelectItem key={category.id} value={category.name}>
+                  {category.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Product</TableHead>
+                <TableHead>SKU</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead>Price</TableHead>
+                <TableHead>Stock</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="w-[50px]"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredProducts.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                    No products found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredProducts.map((product) => (
+                  <TableRow key={product.id}>
+                    <TableCell className="font-medium">{product.name}</TableCell>
+                    <TableCell className="text-muted-foreground">{product.sku}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{product.product_categories?.name || "N/A"}</Badge>
+                    </TableCell>
+                    <TableCell>${product.unit_price.toFixed(2)}</TableCell>
+                    <TableCell>
+                      {(() => {
+                        const reserved = Number(product.reserved_quantity ?? 0)
+                        const stock = Number(product.stock_quantity ?? 0)
+                        const available = stock - reserved
+                    
+                        return (
+                          <div className="space-y-0.5">
+                            <div className={available <= product.min_stock_level ? "text-red-600 font-medium" : ""}>
+                              {available} <span className="text-xs text-muted-foreground">available</span>
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Stock: {stock} • Reserved: {reserved}
+                            </div>
+                          </div>
+                        )
+                      })()}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="secondary"
+                        className={product.is_active ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}
+                      >
+                        {product.is_active ? "Active" : "Inactive"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem asChild>
+                            <Link href={`/admin/products/${product.id}`}>
+                              <Pencil className="mr-2 h-4 w-4" />
+                              Edit
+                            </Link>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleDelete(product.id)}
+                            className="text-destructive focus:text-destructive"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
         </div>
       </CardContent>
     </Card>
