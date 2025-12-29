@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
+import { RecordPaymentModal } from "@/components/admin/record-payment-modal"
 
 interface Customer {
   id: string
@@ -57,9 +58,22 @@ interface OrderItem {
   total: number
 }
 
+interface Payment {
+  id: string
+  order_id: string
+  amount: number
+  payment_method: string
+  reference: string | null
+  notes: string | null
+  received_by: string | null
+  payment_date: string
+  created_at: string
+}
+
 interface OrderDetailsProps {
   order: Order
   orderItems: OrderItem[]
+  payments: Payment[]
 }
 
 const statusColors: Record<string, string> = {
@@ -87,13 +101,18 @@ function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   )
 }
 
-export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
+export function OrderDetails({ order, orderItems, payments }: OrderDetailsProps) {
   const router = useRouter()
 
   const [status, setStatus] = useState(order.status)
-  const [paymentStatus, setPaymentStatus] = useState(order.payment_status)
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
   const [banner, setBanner] = useState<{ type: "idle" | "success" | "error"; message?: string }>({ type: "idle" })
+
+  const [paymentOpen, setPaymentOpen] = useState(false)
+
+  const paidAmount = (payments || []).reduce((sum, p) => sum + Number(p.amount || 0), 0)
+  const orderTotal = Number(order.total || 0)
+  const balanceDue = Math.max(orderTotal - paidAmount, 0)
 
   // fulfillment states
   const [fulfillQty, setFulfillQty] = useState<Record<string, number>>({})
@@ -168,34 +187,6 @@ export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
     router.refresh()
   }
 
-  const handlePaymentStatusChange = async (newStatus: string) => {
-    const prev = paymentStatus
-    setPaymentStatus(newStatus)
-
-    const supabase = createClient()
-    const { error } = await supabase.from("orders").update({ payment_status: newStatus }).eq("id", order.id)
-
-    if (error) {
-      setPaymentStatus(prev)
-      setBanner({ type: "error", message: error.message || "Failed to update payment status" })
-      return
-    }
-
-    await supabase.rpc("log_activity", {
-      p_action: "order_payment_status_changed",
-      p_entity_type: "order",
-      p_entity_id: order.id,
-      p_details: {
-        order_number: order.order_number,
-        from: prev,
-        to: newStatus,
-      },
-    })
-
-    setBanner({ type: "success", message: "Payment status updated." })
-    router.refresh()
-  }
-
   const handleCancelOrder = async () => {
     setCancelErr(null)
     setCancelMsg(null)
@@ -265,19 +256,19 @@ export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
             </SelectContent>
           </Select>
 
-          <Select value={paymentStatus} onValueChange={handlePaymentStatusChange} disabled={isUpdatingStatus || status === "cancelled"}>
-            <SelectTrigger className="w-[150px]">
-              <Badge variant="secondary" className={paymentColors[paymentStatus] || ""}>
-                {paymentStatus}
-              </Badge>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="partial">Partial</SelectItem>
-              <SelectItem value="paid">Paid</SelectItem>
-              <SelectItem value="refunded">Refunded</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className={paymentColors[order.payment_status] || ""}>
+              {order.payment_status}
+            </Badge>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setPaymentOpen(true)}
+              disabled={status === "cancelled" || balanceDue <= 0}
+            >
+              Record Payment
+            </Button>
+          </div>
 
           {/* ✅ Cancel button */}
           <Button
@@ -319,6 +310,53 @@ export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CreditCard className="h-5 w-5" />
+                Payment Summary
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Stat label="Order Total" value={`$${orderTotal.toFixed(2)}`} />
+                <Stat label="Paid" value={`$${paidAmount.toFixed(2)}`} />
+                <Stat label="Balance" value={`$${balanceDue.toFixed(2)}`} />
+              </div>
+
+              <div className="mt-4">
+                {(payments || []).length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No payments recorded yet.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-left text-muted-foreground">
+                          <th className="py-2 pr-4">Date</th>
+                          <th className="py-2 px-2">Method</th>
+                          <th className="py-2 px-2">Reference</th>
+                          <th className="py-2 pl-4 text-right">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {payments.map((p) => (
+                          <tr key={p.id} className="border-b last:border-0">
+                            <td className="py-2 pr-4 whitespace-nowrap">
+                              {new Date(p.payment_date || p.created_at).toLocaleString()}
+                            </td>
+                            <td className="py-2 px-2">{p.payment_method}</td>
+                            <td className="py-2 px-2 text-muted-foreground">{p.reference || "—"}</td>
+                            <td className="py-2 pl-4 text-right font-medium">${Number(p.amount).toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -559,6 +597,15 @@ export function OrderDetails({ order, orderItems }: OrderDetailsProps) {
           </Card>
         </div>
       </div>
+
+      <RecordPaymentModal
+        open={paymentOpen}
+        onOpenChange={setPaymentOpen}
+        orderId={order.id}
+        orderNumber={order.order_number}
+        balanceDue={balanceDue}
+        onRecorded={() => router.refresh()}
+      />
     </div>
   )
 }
