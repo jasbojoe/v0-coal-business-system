@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -28,7 +29,9 @@ import { format, subDays } from "date-fns"
 interface Order {
   id: string
   order_number: string
-  total_amount: number
+  subtotal: number
+  tax: number
+  total: number
   status: string
   payment_status: string
   created_at: string
@@ -41,9 +44,14 @@ interface Product {
   name: string
   sku: string
   stock_quantity: number
-  reorder_level: number
-  price: number
-  cost_price: number | null
+  reserved_quantity: number
+  min_stock_level: number
+  unit_price: number
+}
+
+type PaymentRow = {
+  amount: number
+  payment_date: string
 }
 
 interface ProductionBatch {
@@ -75,6 +83,8 @@ const COLORS = ["#0D3B3B", "#E86A33", "#1A5F5F", "#F59E0B", "#10B981", "#6366F1"
 
 export function ReportsDashboard({ orders, products, productionBatches, staff }: ReportsDashboardProps) {
   const [dateRange, setDateRange] = useState("30")
+  const [payments, setPayments] = useState<PaymentRow[]>([])
+  const [paymentsErr, setPaymentsErr] = useState<string | null>(null)
 
   const filteredOrders = useMemo(() => {
     const days = Number.parseInt(dateRange)
@@ -82,16 +92,40 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
     return orders.filter((order) => new Date(order.created_at) >= startDate)
   }, [orders, dateRange])
 
+  // Fetch payments for the selected period (Revenue = money received)
+  useEffect(() => {
+    const days = Number.parseInt(dateRange)
+    const startDate = subDays(new Date(), days)
+
+    const run = async () => {
+      setPaymentsErr(null)
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from("payments")
+        .select("amount,payment_date")
+        .gte("payment_date", startDate.toISOString())
+
+      if (error) {
+        setPayments([])
+        setPaymentsErr(error.message)
+        return
+      }
+
+      setPayments((data || []).map((p: any) => ({ amount: Number(p.amount || 0), payment_date: p.payment_date })))
+    }
+
+    run()
+  }, [dateRange])
+
   // Sales metrics
   const salesMetrics = useMemo(() => {
-    const totalRevenue = filteredOrders.reduce((sum, order) => sum + order.total_amount, 0)
+    const totalSalesValue = filteredOrders.reduce((sum, order) => sum + Number(order.total || 0), 0)
+    const totalRevenue = (payments || []).reduce((sum, p) => sum + Number(p.amount || 0), 0)
     const totalOrders = filteredOrders.length
-    const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0
-    const paidOrders = filteredOrders.filter((o) => o.payment_status === "paid")
-    const paidRevenue = paidOrders.reduce((sum, order) => sum + order.total_amount, 0)
+    const avgOrderValue = totalOrders > 0 ? totalSalesValue / totalOrders : 0
 
-    return { totalRevenue, totalOrders, avgOrderValue, paidRevenue }
-  }, [filteredOrders])
+    return { totalRevenue, totalSalesValue, totalOrders, avgOrderValue }
+  }, [filteredOrders, payments])
 
   // Sales by day chart data
   const salesByDay = useMemo(() => {
@@ -102,22 +136,25 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
       const date = subDays(new Date(), i)
       const dateStr = format(date, "MMM d")
       const dayOrders = filteredOrders.filter((o) => format(new Date(o.created_at), "MMM d") === dateStr)
+      const dayPayments = (payments || []).filter(
+        (p) => format(new Date(p.payment_date), "MMM d") === dateStr,
+      )
       data.push({
         date: dateStr,
-        revenue: dayOrders.reduce((sum, o) => sum + o.total_amount, 0),
+        revenue: dayPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0),
         orders: dayOrders.length,
       })
     }
 
     return data.slice(-14) // Show last 14 data points max
-  }, [filteredOrders, dateRange])
+  }, [filteredOrders, payments, dateRange])
 
   // Sales by customer type
   const salesByCustomerType = useMemo(() => {
     const typeMap: Record<string, number> = {}
     filteredOrders.forEach((order) => {
       const type = order.customer?.customer_type || "Unknown"
-      typeMap[type] = (typeMap[type] || 0) + order.total_amount
+      typeMap[type] = (typeMap[type] || 0) + Number(order.total || 0)
     })
     return Object.entries(typeMap).map(([name, value]) => ({ name, value }))
   }, [filteredOrders])
@@ -136,12 +173,16 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
 
   // Inventory metrics
   const inventoryMetrics = useMemo(() => {
-    const lowStock = products.filter((p) => p.stock_quantity <= p.reorder_level)
+    const lowStock = products.filter((p) => {
+      const stock = Number(p.stock_quantity || 0)
+      const reserved = Number(p.reserved_quantity || 0)
+      const available = stock - reserved
+      return available <= Number(p.min_stock_level || 0)
+    })
     const outOfStock = products.filter((p) => p.stock_quantity === 0)
-    const totalValue = products.reduce((sum, p) => sum + p.stock_quantity * p.price, 0)
-    const totalCost = products.reduce((sum, p) => sum + p.stock_quantity * (p.cost_price || 0), 0)
+    const totalValue = products.reduce((sum, p) => sum + Number(p.stock_quantity || 0) * Number(p.unit_price || 0), 0)
 
-    return { lowStock: lowStock.length, outOfStock: outOfStock.length, totalValue, totalCost }
+    return { lowStock: lowStock.length, outOfStock: outOfStock.length, totalValue }
   }, [products])
 
   // Production metrics
@@ -460,7 +501,7 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
                     <Tooltip />
                     <Legend />
                     <Bar dataKey="stock_quantity" name="Current Stock" fill="#0D3B3B" />
-                    <Bar dataKey="reorder_level" name="Reorder Level" fill="#E86A33" />
+                    <Bar dataKey="min_stock_level" name="Min Stock Level" fill="#E86A33" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
