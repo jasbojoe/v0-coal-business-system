@@ -10,9 +10,10 @@ export default async function OrderDetailsPage({
   const { id } = await params
   const supabase = await createClient()
 
-  const [{ data: order }, { data: orderItems }] = await Promise.all([
+  const [{ data: order }, { data: orderItems }, { data: payments }] = await Promise.all([
     supabase.from("orders").select("*, customers(*)").eq("id", id).single(),
-    supabase.from("order_items").select("*").eq("order_id", id),
+    supabase.from("order_items").select("*").eq("order_id", id).order("created_at", { ascending: true }),
+    supabase.from("payments").select("*").eq("order_id", id).order("payment_date", { ascending: false }),
   ])
 
   if (!order) {
@@ -21,7 +22,7 @@ export default async function OrderDetailsPage({
 
   return (
     <div className="space-y-6">
-      <OrderDetails order={order} orderItems={orderItems || []} />
+      <OrderDetails order={order} orderItems={orderItems || []} payments={payments || []} />
     </div>
   )
 }
