@@ -51,7 +51,7 @@ interface Product {
 
 type PaymentRow = {
   amount: number
-  payment_date: string
+  payment_date: string | null
 }
 
 interface ProductionBatch {
@@ -81,6 +81,17 @@ interface ReportsDashboardProps {
 
 const COLORS = ["#0D3B3B", "#E86A33", "#1A5F5F", "#F59E0B", "#10B981", "#6366F1"]
 
+function safeNumber(n: any) {
+  const v = Number(n)
+  return Number.isFinite(v) ? v : 0
+}
+
+function safeDateStr(s: any): string | null {
+  if (!s) return null
+  const d = new Date(s)
+  return Number.isNaN(d.getTime()) ? null : s
+}
+
 export function ReportsDashboard({ orders, products, productionBatches, staff }: ReportsDashboardProps) {
   const [dateRange, setDateRange] = useState("30")
   const [payments, setPayments] = useState<PaymentRow[]>([])
@@ -92,7 +103,7 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
     return orders.filter((order) => new Date(order.created_at) >= startDate)
   }, [orders, dateRange])
 
-  // Fetch payments for the selected period (Revenue = money received)
+  // Fetch payments for selected period (Revenue = money received)
   useEffect(() => {
     const days = Number.parseInt(dateRange)
     const startDate = subDays(new Date(), days)
@@ -111,7 +122,12 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
         return
       }
 
-      setPayments((data || []).map((p: any) => ({ amount: Number(p.amount || 0), payment_date: p.payment_date })))
+      setPayments(
+        (data || []).map((p: any) => ({
+          amount: safeNumber(p.amount),
+          payment_date: safeDateStr(p.payment_date),
+        })),
+      )
     }
 
     run()
@@ -119,15 +135,21 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
 
   // Sales metrics
   const salesMetrics = useMemo(() => {
-    const totalSalesValue = filteredOrders.reduce((sum, order) => sum + Number(order.total || 0), 0)
-    const totalRevenue = (payments || []).reduce((sum, p) => sum + Number(p.amount || 0), 0)
+    const totalSalesValue = filteredOrders.reduce((sum, order) => sum + safeNumber(order.total), 0)
+
+    // Rule A: Revenue = payments received
+    const totalRevenue = (payments || []).reduce((sum, p) => sum + safeNumber(p.amount), 0)
+
     const totalOrders = filteredOrders.length
     const avgOrderValue = totalOrders > 0 ? totalSalesValue / totalOrders : 0
 
-    return { totalRevenue, totalSalesValue, totalOrders, avgOrderValue }
+    // ✅ You were rendering this but not returning it previously (this caused the crash)
+    const paidRevenue = totalRevenue
+
+    return { totalRevenue, paidRevenue, totalSalesValue, totalOrders, avgOrderValue }
   }, [filteredOrders, payments])
 
-  // Sales by day chart data
+  // Sales by day chart data (revenue = payments per day)
   const salesByDay = useMemo(() => {
     const days = Number.parseInt(dateRange)
     const data: { date: string; revenue: number; orders: number }[] = []
@@ -135,26 +157,32 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
     for (let i = days - 1; i >= 0; i--) {
       const date = subDays(new Date(), i)
       const dateStr = format(date, "MMM d")
+
       const dayOrders = filteredOrders.filter((o) => format(new Date(o.created_at), "MMM d") === dateStr)
-      const dayPayments = (payments || []).filter(
-        (p) => format(new Date(p.payment_date), "MMM d") === dateStr,
-      )
+
+      const dayPayments = (payments || []).filter((p) => {
+        if (!p.payment_date) return false
+        const d = new Date(p.payment_date)
+        if (Number.isNaN(d.getTime())) return false
+        return format(d, "MMM d") === dateStr
+      })
+
       data.push({
         date: dateStr,
-        revenue: dayPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0),
+        revenue: dayPayments.reduce((sum, p) => sum + safeNumber(p.amount), 0),
         orders: dayOrders.length,
       })
     }
 
-    return data.slice(-14) // Show last 14 data points max
+    return data.slice(-14)
   }, [filteredOrders, payments, dateRange])
 
-  // Sales by customer type
+  // Sales by customer type (order value, not cash collected)
   const salesByCustomerType = useMemo(() => {
     const typeMap: Record<string, number> = {}
     filteredOrders.forEach((order) => {
       const type = order.customer?.customer_type || "Unknown"
-      typeMap[type] = (typeMap[type] || 0) + Number(order.total || 0)
+      typeMap[type] = (typeMap[type] || 0) + safeNumber(order.total)
     })
     return Object.entries(typeMap).map(([name, value]) => ({ name, value }))
   }, [filteredOrders])
@@ -174,14 +202,16 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
   // Inventory metrics
   const inventoryMetrics = useMemo(() => {
     const lowStock = products.filter((p) => {
-      const stock = Number(p.stock_quantity || 0)
-      const reserved = Number(p.reserved_quantity || 0)
+      const stock = safeNumber(p.stock_quantity)
+      const reserved = safeNumber(p.reserved_quantity)
       const available = stock - reserved
-      return available <= Number(p.min_stock_level || 0)
+      return available <= safeNumber(p.min_stock_level)
     })
-    const outOfStock = products.filter((p) => p.stock_quantity === 0)
-    const totalValue = products.reduce((sum, p) => sum + Number(p.stock_quantity || 0) * Number(p.unit_price || 0), 0)
-
+    const outOfStock = products.filter((p) => safeNumber(p.stock_quantity) === 0)
+    const totalValue = products.reduce(
+      (sum, p) => sum + safeNumber(p.stock_quantity) * safeNumber(p.unit_price),
+      0,
+    )
     return { lowStock: lowStock.length, outOfStock: outOfStock.length, totalValue }
   }, [products])
 
@@ -190,7 +220,7 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
     const days = Number.parseInt(dateRange)
     const startDate = subDays(new Date(), days)
     const recentBatches = productionBatches.filter((b) => new Date(b.created_at) >= startDate)
-    const totalProduced = recentBatches.reduce((sum, b) => sum + b.quantity_produced, 0)
+    const totalProduced = recentBatches.reduce((sum, b) => sum + safeNumber(b.quantity_produced), 0)
     const approvedBatches = recentBatches.filter((b) => b.status === "approved")
     const inProgressBatches = recentBatches.filter((b) => b.status === "in_progress")
 
@@ -223,18 +253,16 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
     }
   }, [staff])
 
-  // Top selling products
+  // Top products (based on order items)
   const topProducts = useMemo(() => {
     const productSales: Record<string, { name: string; quantity: number; revenue: number }> = {}
 
     filteredOrders.forEach((order) => {
       order.items?.forEach((item) => {
         const name = item.product?.name || "Unknown"
-        if (!productSales[name]) {
-          productSales[name] = { name, quantity: 0, revenue: 0 }
-        }
-        productSales[name].quantity += item.quantity
-        productSales[name].revenue += item.quantity * item.unit_price
+        if (!productSales[name]) productSales[name] = { name, quantity: 0, revenue: 0 }
+        productSales[name].quantity += safeNumber(item.quantity)
+        productSales[name].revenue += safeNumber(item.quantity) * safeNumber(item.unit_price)
       })
     })
 
@@ -268,6 +296,12 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
         </Button>
       </div>
 
+      {paymentsErr ? (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          Could not load payments (Revenue): {paymentsErr}
+        </div>
+      ) : null}
+
       <Tabs defaultValue="sales" className="space-y-6">
         <TabsList className="grid w-full grid-cols-4 lg:w-[500px]">
           <TabsTrigger value="sales">Sales</TabsTrigger>
@@ -285,7 +319,7 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">Total Revenue</p>
-                    <p className="text-2xl font-bold">Le {salesMetrics.totalRevenue.toLocaleString()}</p>
+                    <p className="text-2xl font-bold">Le {(salesMetrics.totalRevenue ?? 0).toLocaleString()}</p>
                   </div>
                   <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
                     <DollarSign className="h-6 w-6 text-primary" />
@@ -293,12 +327,13 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
                 </div>
               </CardContent>
             </Card>
+
             <Card>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">Total Orders</p>
-                    <p className="text-2xl font-bold">{salesMetrics.totalOrders}</p>
+                    <p className="text-2xl font-bold">{salesMetrics.totalOrders ?? 0}</p>
                   </div>
                   <div className="h-12 w-12 rounded-full bg-accent/10 flex items-center justify-center">
                     <Package className="h-6 w-6 text-accent" />
@@ -306,13 +341,14 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
                 </div>
               </CardContent>
             </Card>
+
             <Card>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">Avg Order Value</p>
                     <p className="text-2xl font-bold">
-                      Le {salesMetrics.avgOrderValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      Le {(salesMetrics.avgOrderValue ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                     </p>
                   </div>
                   <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
@@ -321,12 +357,13 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
                 </div>
               </CardContent>
             </Card>
+
             <Card>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">Paid Revenue</p>
-                    <p className="text-2xl font-bold">Le {salesMetrics.paidRevenue.toLocaleString()}</p>
+                    <p className="text-2xl font-bold">Le {(salesMetrics.paidRevenue ?? 0).toLocaleString()}</p>
                   </div>
                   <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center">
                     <DollarSign className="h-6 w-6 text-blue-600" />
@@ -344,20 +381,14 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
                 <CardDescription>Daily revenue over time</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-[300px]">
+                <div className="h-[300px] min-h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={salesByDay}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="date" fontSize={12} />
                       <YAxis fontSize={12} />
-                      <Tooltip />
-                      <Line
-                        type="monotone"
-                        dataKey="revenue"
-                        stroke="#0D3B3B"
-                        strokeWidth={2}
-                        dot={{ fill: "#0D3B3B" }}
-                      />
+                      <Tooltip formatter={(v: any) => `Le ${safeNumber(v).toLocaleString()}`} />
+                      <Line type="monotone" dataKey="revenue" stroke="#0D3B3B" strokeWidth={2} dot={{ fill: "#0D3B3B" }} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -370,7 +401,7 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
                 <CardDescription>Revenue breakdown by customer segment</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-[300px]">
+                <div className="h-[300px] min-h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
@@ -381,13 +412,13 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
                         outerRadius={100}
                         paddingAngle={5}
                         dataKey="value"
-                        label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                        label={({ name, percent }) => `${name} (${((percent || 0) * 100).toFixed(0)}%)`}
                       >
                         {salesByCustomerType.map((_, index) => (
                           <Cell key={index} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(value: number) => `Le ${value.toLocaleString()}`} />
+                      <Tooltip formatter={(value: any) => `Le ${safeNumber(value).toLocaleString()}`} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -426,8 +457,10 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
                             {product.name}
                           </div>
                         </TableCell>
-                        <TableCell className="text-right">{product.quantity}</TableCell>
-                        <TableCell className="text-right font-medium">Le {product.revenue.toLocaleString()}</TableCell>
+                        <TableCell className="text-right">{safeNumber(product.quantity).toLocaleString()}</TableCell>
+                        <TableCell className="text-right font-medium">
+                          Le {safeNumber(product.revenue).toLocaleString()}
+                        </TableCell>
                       </TableRow>
                     ))
                   )}
@@ -451,6 +484,7 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
                 </div>
               </CardContent>
             </Card>
+
             <Card>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
@@ -462,6 +496,7 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
                 </div>
               </CardContent>
             </Card>
+
             <Card>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
@@ -473,12 +508,13 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
                 </div>
               </CardContent>
             </Card>
+
             <Card>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">Inventory Value</p>
-                    <p className="text-2xl font-bold">Le {inventoryMetrics.totalValue.toLocaleString()}</p>
+                    <p className="text-2xl font-bold">Le {safeNumber(inventoryMetrics.totalValue).toLocaleString()}</p>
                   </div>
                   <DollarSign className="h-8 w-8 text-muted-foreground" />
                 </div>
@@ -492,7 +528,7 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
               <CardDescription>Current inventory levels by product</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-[400px]">
+              <div className="h-[400px] min-h-[400px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={products.slice(0, 10)} layout="vertical">
                     <CartesianGrid strokeDasharray="3 3" />
@@ -523,17 +559,19 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
                 </div>
               </CardContent>
             </Card>
+
             <Card>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">Units Produced</p>
-                    <p className="text-2xl font-bold">{productionMetrics.totalProduced.toLocaleString()}</p>
+                    <p className="text-2xl font-bold">{safeNumber(productionMetrics.totalProduced).toLocaleString()}</p>
                   </div>
                   <Package className="h-8 w-8 text-muted-foreground" />
                 </div>
               </CardContent>
             </Card>
+
             <Card>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
@@ -545,6 +583,7 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
                 </div>
               </CardContent>
             </Card>
+
             <Card>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
@@ -579,7 +618,7 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
                     <TableRow key={batch.id}>
                       <TableCell className="font-mono">{batch.batch_number}</TableCell>
                       <TableCell>{batch.product?.name || "-"}</TableCell>
-                      <TableCell className="text-right">{batch.quantity_produced}</TableCell>
+                      <TableCell className="text-right">{safeNumber(batch.quantity_produced).toLocaleString()}</TableCell>
                       <TableCell>
                         <Badge
                           variant={
@@ -616,6 +655,7 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
                 </div>
               </CardContent>
             </Card>
+
             <Card>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
@@ -627,6 +667,7 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
                 </div>
               </CardContent>
             </Card>
+
             <Card>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
@@ -638,6 +679,7 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
                 </div>
               </CardContent>
             </Card>
+
             <Card>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
@@ -658,7 +700,7 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
                 <CardDescription>Team distribution across departments</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-[300px]">
+                <div className="h-[300px] min-h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
@@ -688,7 +730,7 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
                 <CardDescription>Team composition by role type</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-[300px]">
+                <div className="h-[300px] min-h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={staffMetrics.byRole}>
                       <CartesianGrid strokeDasharray="3 3" />
