@@ -597,12 +597,13 @@ export function OrderDetails({ order, orderItems, payments }: OrderDetailsProps)
           </Card>
         </div>
       </div>
-
       <RecordPaymentModal
-        open={isPaymentModalOpen}
-        onClose={() => setIsPaymentModalOpen(false)}
+        open={paymentOpen}
+        onOpenChange={setPaymentOpen}
         orderId={order.id}
+        orderNumber={order.order_number}
         balanceDue={balanceDue}
+        onRecorded={() => router.refresh()}
       />
     </div>
   )
