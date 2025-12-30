@@ -31,18 +31,26 @@ export function RecordPaymentModal({
     setLoading(true)
     try {
       await recordPayment(orderId, value, method, reference || null, notes || null)
+      // ✅ close AFTER successful save
       onClose()
+      // optional: reset fields
       setAmount("")
+      setMethod("Cash")
       setReference("")
       setNotes("")
-      setMethod("Cash")
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => (!v ? onClose() : undefined)}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        // ✅ allow closing via X, overlay click, or ESC
+        if (!nextOpen) onClose()
+      }}
+    >
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Record Payment</DialogTitle>
@@ -85,9 +93,19 @@ export function RecordPaymentModal({
             onChange={(e) => setNotes(e.target.value)}
           />
 
-          <Button onClick={submit} disabled={loading}>
-            {loading ? "Saving..." : "Save Payment"}
-          </Button>
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={loading}
+            >
+              Close
+            </Button>
+            <Button type="button" onClick={submit} disabled={loading}>
+              {loading ? "Saving..." : "Save Payment"}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
