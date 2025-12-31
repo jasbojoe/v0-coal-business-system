@@ -21,6 +21,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
 import { RecordPaymentModal } from "@/components/admin/record-payment-modal"
+import { RefundPaymentModal } from "@/components/admin/refund-payment-modal"
+import { RotateCcw } from "lucide-react"
+
 
 interface Customer {
   id: string
@@ -84,6 +87,8 @@ const statusColors: Record<string, string> = {
   delivered: "bg-green-100 text-green-800",
   cancelled: "bg-red-100 text-red-800",
 }
+const [refundOpen, setRefundOpen] = useState(false)
+const refundable = Math.max(paidAmount, 0)
 
 const paymentColors: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800",
@@ -268,6 +273,18 @@ export function OrderDetails({ order, orderItems, payments }: OrderDetailsProps)
             >
               Record Payment
             </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setRefundOpen(true)}
+              disabled={refundable <= 0}
+              className="gap-2"
+            >
+              <RotateCcw className="h-4 w-4" />
+              Refund
+            </Button>
+
           </div>
 
           {/* ✅ Cancel button */}
@@ -346,7 +363,17 @@ export function OrderDetails({ order, orderItems, payments }: OrderDetailsProps)
                             </td>
                             <td className="py-2 px-2">{p.payment_method}</td>
                             <td className="py-2 px-2 text-muted-foreground">{p.reference || "—"}</td>
-                            <td className="py-2 pl-4 text-right font-medium">${Number(p.amount).toFixed(2)}</td>
+                            <td className="py-2 pl-4 text-right font-medium">
+                              {Number(p.amount) < 0 ? (
+                                <span className="inline-flex items-center gap-2">
+                                  <span className="rounded bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-800">REFUND</span>
+                                  <span>-${Math.abs(Number(p.amount)).toFixed(2)}</span>
+                                </span>
+                              ) : (
+                                <>${Number(p.amount).toFixed(2)}</>
+                              )}
+                            </td>
+
                           </tr>
                         ))}
                       </tbody>
