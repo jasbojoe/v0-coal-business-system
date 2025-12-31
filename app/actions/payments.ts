@@ -3,12 +3,20 @@
 import { createClient } from "@supabase/supabase-js"
 import { revalidatePath } from "next/cache"
 
-const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
-  auth: { autoRefreshToken: false, persistSession: false },
-})
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+function getAdminClient() {
+  if (!supabaseUrl) throw new Error("Missing env: NEXT_PUBLIC_SUPABASE_URL")
+  if (!serviceKey) throw new Error("Missing env: SUPABASE_SERVICE_ROLE_KEY (add it in Vercel → Project → Settings → Environment Variables)")
+  return createClient(supabaseUrl, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
+}
 
 async function recomputePaymentStatus(orderId: string) {
-  // Pull order total
+  const supabaseAdmin = getAdminClient()
+
   const { data: order, error: orderErr } = await supabaseAdmin
     .from("orders")
     .select("id,total")
@@ -17,7 +25,6 @@ async function recomputePaymentStatus(orderId: string) {
 
   if (orderErr) throw orderErr
 
-  // Sum payments (refunds are negative amounts)
   const { data: rows, error: sumErr } = await supabaseAdmin
     .from("payments")
     .select("amount")
@@ -29,13 +36,9 @@ async function recomputePaymentStatus(orderId: string) {
   const total = Number(order.total || 0)
 
   let payment_status: "pending" | "partial" | "paid" | "refunded" = "pending"
-
   if (paid <= 0) payment_status = "pending"
   else if (paid >= total) payment_status = "paid"
   else payment_status = "partial"
-
-  // OPTIONAL: if you ever want to mark "refunded" only when order is fully refunded,
-  // you can add that logic here later.
 
   const { error: updErr } = await supabaseAdmin.from("orders").update({ payment_status }).eq("id", orderId)
   if (updErr) throw updErr
@@ -51,6 +54,8 @@ export async function recordPayment(
   if (!orderId) throw new Error("Missing orderId")
   if (!Number.isFinite(amount) || amount <= 0) throw new Error("Invalid amount")
 
+  const supabaseAdmin = getAdminClient()
+
   const { error } = await supabaseAdmin.from("payments").insert({
     order_id: orderId,
     amount,
@@ -63,6 +68,8 @@ export async function recordPayment(
 
   await recomputePaymentStatus(orderId)
   revalidatePath(`/admin/orders/${orderId}`)
+  revalidatePath(`/admin/orders`)
+  revalidatePath(`/admin/reports`)
 }
 
 export async function refundPayment(
@@ -75,7 +82,8 @@ export async function refundPayment(
   if (!orderId) throw new Error("Missing orderId")
   if (!Number.isFinite(refundAmount) || refundAmount <= 0) throw new Error("Invalid refund amount")
 
-  // Store refunds as NEGATIVE payment rows
+  const supabaseAdmin = getAdminClient()
+
   const { error } = await supabaseAdmin.from("payments").insert({
     order_id: orderId,
     amount: -Math.abs(refundAmount),
@@ -88,4 +96,6 @@ export async function refundPayment(
 
   await recomputePaymentStatus(orderId)
   revalidatePath(`/admin/orders/${orderId}`)
+  revalidatePath(`/admin/orders`)
+  revalidatePath(`/admin/reports`)
 }

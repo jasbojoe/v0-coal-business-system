@@ -1,29 +1,19 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import {
-  ArrowLeft,
-  User,
-  MapPin,
-  CreditCard,
-  Package,
-  Loader2,
-  CheckCircle2,
-  Ban,
-} from "lucide-react"
+import { ArrowLeft } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
+
 import { RecordPaymentModal } from "@/components/admin/record-payment-modal"
 import { RefundPaymentModal } from "@/components/admin/refund-payment-modal"
-import { RotateCcw } from "lucide-react"
-
 
 interface Customer {
   id: string
@@ -88,7 +78,6 @@ const statusColors: Record<string, string> = {
   cancelled: "bg-red-100 text-red-800",
 }
 
-
 const paymentColors: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800",
   partial: "bg-orange-100 text-orange-800",
@@ -112,22 +101,25 @@ export function OrderDetails({ order, orderItems, payments }: OrderDetailsProps)
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
   const [banner, setBanner] = useState<{ type: "idle" | "success" | "error"; message?: string }>({ type: "idle" })
 
+  // ✅ these MUST be inside the component
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [refundOpen, setRefundOpen] = useState(false)
 
-  const paidAmount = (payments || []).reduce((sum, p) => sum + Number(p.amount || 0), 0)
+  const paidAmount = useMemo(() => {
+    return (payments || []).reduce((sum, p) => sum + Number(p.amount || 0), 0)
+  }, [payments])
+
   const orderTotal = Number(order.total || 0)
   const balanceDue = Math.max(orderTotal - paidAmount, 0)
   const refundable = Math.max(paidAmount, 0)
 
-
-  // fulfillment states
+  // fulfillment UI state
   const [fulfillQty, setFulfillQty] = useState<Record<string, number>>({})
   const [isFulfilling, setIsFulfilling] = useState<Record<string, boolean>>({})
   const [actionMsg, setActionMsg] = useState<string | null>(null)
   const [actionErr, setActionErr] = useState<string | null>(null)
 
-  // cancel order states
+  // cancel state
   const [isCancelling, setIsCancelling] = useState(false)
   const [cancelErr, setCancelErr] = useState<string | null>(null)
   const [cancelMsg, setCancelMsg] = useState<string | null>(null)
@@ -182,11 +174,7 @@ export function OrderDetails({ order, orderItems, payments }: OrderDetailsProps)
       p_action: "order_status_changed",
       p_entity_type: "order",
       p_entity_id: order.id,
-      p_details: {
-        order_number: order.order_number,
-        from: prev,
-        to: newStatus,
-      },
+      p_details: { order_number: order.order_number, from: prev, to: newStatus },
     })
 
     setBanner({ type: "success", message: "Order status updated." })
@@ -199,14 +187,9 @@ export function OrderDetails({ order, orderItems, payments }: OrderDetailsProps)
     setCancelMsg(null)
 
     if (status === "cancelled") return
-    if (status === "delivered") {
-      setCancelErr("Delivered orders cannot be cancelled.")
-      return
-    }
+    if (status === "delivered") return setCancelErr("Delivered orders cannot be cancelled.")
 
-    const ok = window.confirm(
-      `Cancel order ${order.order_number}?\n\nThis will reverse any fulfilled stock back into inventory.`,
-    )
+    const ok = window.confirm(`Cancel order ${order.order_number}?\n\nThis will reverse any fulfilled stock back into inventory.`)
     if (!ok) return
 
     const reason = window.prompt("Reason for cancellation (optional):", "Cancelled by admin") || "Cancelled by admin"
@@ -214,10 +197,7 @@ export function OrderDetails({ order, orderItems, payments }: OrderDetailsProps)
     setIsCancelling(true)
     try {
       const supabase = createClient()
-      const { error } = await supabase.rpc("cancel_order", {
-        p_order_id: order.id,
-        p_reason: reason,
-      })
+      const { error } = await supabase.rpc("cancel_order", { p_order_id: order.id, p_reason: reason })
       if (error) throw error
 
       setCancelMsg("Order cancelled. Fulfilled stock was reversed back to inventory.")
@@ -263,284 +243,131 @@ export function OrderDetails({ order, orderItems, payments }: OrderDetailsProps)
             </SelectContent>
           </Select>
 
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" className={paymentColors[order.payment_status] || ""}>
-              {order.payment_status}
-            </Badge>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setPaymentOpen(true)}
-              disabled={status === "cancelled" || balanceDue <= 0}
-            >
-              Record Payment
-            </Button>
+          {/* Payment status display only (auto-calculated) */}
+          <Badge className={paymentColors[order.payment_status] || ""} variant="secondary">
+            {order.payment_status}
+          </Badge>
 
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setRefundOpen(true)}
-              disabled={refundable <= 0}
-              className="gap-2"
-            >
-              <RotateCcw className="h-4 w-4" />
-              Refund
-            </Button>
+          <Button type="button" onClick={() => setPaymentOpen(true)}>
+            Record Payment
+          </Button>
 
-          </div>
+          <Button type="button" variant="outline" onClick={() => setRefundOpen(true)} disabled={refundable <= 0}>
+            Refund
+          </Button>
 
-          {/* ✅ Cancel button */}
-          <Button
-            type="button"
-            variant="destructive"
-            onClick={handleCancelOrder}
-            disabled={isCancelling || status === "cancelled" || status === "delivered"}
-            className="gap-2"
-          >
-            {isCancelling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
-            {status === "cancelled" ? "Cancelled" : "Cancel"}
+          <Button type="button" variant="destructive" onClick={handleCancelOrder} disabled={isCancelling || status === "cancelled"}>
+            Cancel
           </Button>
         </div>
       </div>
 
-      {(isUpdatingStatus || banner.type !== "idle" || cancelMsg || cancelErr) && (
-        <div className="mb-6 space-y-2">
-          {isUpdatingStatus && (
-            <div className="rounded-md border bg-slate-50 p-3 text-sm text-slate-700 flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Updating order...
-            </div>
-          )}
-          {banner.type === "success" && (
-            <div className="rounded-md border bg-emerald-50 p-3 text-sm text-emerald-800 flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4" />
-              {banner.message || "Success"}
-            </div>
-          )}
-          {banner.type === "error" && (
-            <div className="rounded-md border bg-rose-50 p-3 text-sm text-rose-800">
-              {banner.message || "An error occurred"}
-            </div>
-          )}
-          {cancelMsg && <div className="rounded-md border bg-emerald-50 p-3 text-sm text-emerald-800">{cancelMsg}</div>}
-          {cancelErr && <div className="rounded-md border bg-rose-50 p-3 text-sm text-rose-800">{cancelErr}</div>}
+      {banner.type !== "idle" ? (
+        <div className={`mb-4 rounded-md border p-3 text-sm ${banner.type === "error" ? "bg-rose-50 text-rose-800" : "bg-emerald-50 text-emerald-800"}`}>
+          {banner.message}
         </div>
-      )}
+      ) : null}
+
+      {cancelErr ? <div className="mb-3 rounded-md border bg-rose-50 p-3 text-sm text-rose-800">{cancelErr}</div> : null}
+      {cancelMsg ? <div className="mb-3 rounded-md border bg-emerald-50 p-3 text-sm text-emerald-800">{cancelMsg}</div> : null}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
+          {/* Payment Summary */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CreditCard className="h-5 w-5" />
-                Payment Summary
-              </CardTitle>
+              <CardTitle>Payment Summary</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <Stat label="Order Total" value={`$${orderTotal.toFixed(2)}`} />
                 <Stat label="Paid" value={`$${paidAmount.toFixed(2)}`} />
                 <Stat label="Balance" value={`$${balanceDue.toFixed(2)}`} />
               </div>
 
-              <div className="mt-4">
-                {(payments || []).length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No payments recorded yet.</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b text-left text-muted-foreground">
-                          <th className="py-2 pr-4">Date</th>
-                          <th className="py-2 px-2">Method</th>
-                          <th className="py-2 px-2">Reference</th>
-                          <th className="py-2 pl-4 text-right">Amount</th>
+              <div className="overflow-x-auto rounded-md border">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 text-left">
+                    <tr>
+                      <th className="p-2">Date</th>
+                      <th className="p-2">Method</th>
+                      <th className="p-2">Reference</th>
+                      <th className="p-2 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(payments || []).length === 0 ? (
+                      <tr>
+                        <td className="p-3 text-muted-foreground" colSpan={4}>
+                          No payments recorded
+                        </td>
+                      </tr>
+                    ) : (
+                      payments.map((p) => (
+                        <tr key={p.id} className="border-t">
+                          <td className="p-2">{p.payment_date ? new Date(p.payment_date).toLocaleDateString() : "—"}</td>
+                          <td className="p-2">{p.payment_method || "—"}</td>
+                          <td className="p-2">{p.reference || "—"}</td>
+                          <td className="p-2 text-right">${Number(p.amount || 0).toFixed(2)}</td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {payments.map((p) => (
-                          <tr key={p.id} className="border-b last:border-0">
-                            <td className="py-2 pr-4 whitespace-nowrap">
-                              {new Date(p.payment_date || p.created_at).toLocaleString()}
-                            </td>
-                            <td className="py-2 px-2">{p.payment_method}</td>
-                            <td className="py-2 px-2 text-muted-foreground">{p.reference || "—"}</td>
-                            <td className="py-2 pl-4 text-right font-medium">
-                              {Number(p.amount) < 0 ? (
-                                <span className="inline-flex items-center gap-2">
-                                  <span className="rounded bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-800">REFUND</span>
-                                  <span>-${Math.abs(Number(p.amount)).toFixed(2)}</span>
-                                </span>
-                              ) : (
-                                <>${Number(p.amount).toFixed(2)}</>
-                              )}
-                            </td>
-
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </CardContent>
           </Card>
 
+          {/* Items */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Package className="h-5 w-5" />
-                Items
-              </CardTitle>
+              <CardTitle>Items</CardTitle>
             </CardHeader>
+            <CardContent className="space-y-3">
+              {actionErr ? <div className="rounded-md border bg-rose-50 p-3 text-sm text-rose-800">{actionErr}</div> : null}
+              {actionMsg ? <div className="rounded-md border bg-emerald-50 p-3 text-sm text-emerald-800">{actionMsg}</div> : null}
 
-            <CardContent>
-              {actionMsg && (
-                <div className="mb-3 rounded-md border bg-emerald-50 p-3 text-sm text-emerald-800">{actionMsg}</div>
-              )}
-              {actionErr && (
-                <div className="mb-3 rounded-md border bg-rose-50 p-3 text-sm text-rose-800">{actionErr}</div>
-              )}
-
-              {/* ✅ Mobile layout */}
-              <div className="space-y-3 md:hidden">
-                {orderItems.map((item) => (
-                  <Card key={item.id}>
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="font-medium leading-snug">{item.product_name}</div>
-                        {item.backorder_quantity > 0 ? (
-                          <Badge className="bg-amber-100 text-amber-800 whitespace-nowrap">
-                            Backorder {item.backorder_quantity}
-                          </Badge>
-                        ) : (
-                          <Badge className="bg-emerald-100 text-emerald-800 whitespace-nowrap">Fulfilled</Badge>
-                        )}
-                      </div>
-
-                      <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
-                        <Stat label="Ordered" value={item.quantity} />
-                        <Stat label="Fulfilled" value={item.fulfilled_quantity} />
-                        <Stat label="Remaining" value={item.quantity - item.fulfilled_quantity} />
-                      </div>
-
-                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                        <Stat label="Price" value={`$${item.unit_price.toFixed(2)}`} />
-                        <Stat label="Line Total" value={`$${item.total.toFixed(2)}`} />
-                      </div>
-
-                      {item.backorder_quantity > 0 && status !== "cancelled" ? (
-                        <div className="mt-3 flex items-center gap-2">
-                          <Input
-                            type="number"
-                            min={1}
-                            max={item.backorder_quantity}
-                            value={fulfillQty[item.id] ?? ""}
-                            onChange={(e) =>
-                              setFulfillQty((p) => ({
-                                ...p,
-                                [item.id]: Math.min(
-                                  item.backorder_quantity,
-                                  Math.max(0, Number.parseInt(e.target.value || "0", 10)),
-                                ),
-                              }))
-                            }
-                            className="w-28"
-                            placeholder="Qty"
-                          />
-                          <Button
-                            type="button"
-                            className="flex-1"
-                            onClick={() => handleFulfill(item)}
-                            disabled={!!isFulfilling[item.id]}
-                          >
-                            {isFulfilling[item.id] ? (
-                              <span className="inline-flex items-center gap-2">
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                Fulfilling...
-                              </span>
-                            ) : (
-                              "Fulfill"
-                            )}
-                          </Button>
-                        </div>
-                      ) : null}
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-
-              {/* ✅ Desktop table */}
-              <div className="hidden md:block overflow-x-auto">
-                <table className="w-full min-w-[820px]">
-                  <thead>
-                    <tr className="border-b text-left text-sm font-medium text-muted-foreground">
-                      <th className="pb-3 pr-4 whitespace-nowrap">Product</th>
-                      <th className="pb-3 px-2 text-center whitespace-nowrap">Ordered</th>
-                      <th className="pb-3 px-2 text-center whitespace-nowrap">Fulfilled</th>
-                      <th className="pb-3 px-2 text-center whitespace-nowrap">Backorder</th>
-                      <th className="pb-3 px-2 text-right whitespace-nowrap">Price</th>
-                      <th className="pb-3 px-2 text-right whitespace-nowrap">Total</th>
-                      <th className="pb-3 pl-4 text-right whitespace-nowrap">Fulfill</th>
+              <div className="overflow-x-auto rounded-md border">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 text-left">
+                    <tr>
+                      <th className="p-2">Product</th>
+                      <th className="p-2 text-right">Ordered</th>
+                      <th className="p-2 text-right">Fulfilled</th>
+                      <th className="p-2 text-right">Backorder</th>
+                      <th className="p-2 text-right">Price</th>
+                      <th className="p-2 text-right">Total</th>
+                      <th className="p-2">Fulfill</th>
                     </tr>
                   </thead>
-
                   <tbody>
                     {orderItems.map((item) => (
-                      <tr key={item.id} className="border-b last:border-0 align-top">
-                        <td className="py-3 pr-4 font-medium">{item.product_name}</td>
-
-                        <td className="py-3 px-2 text-center">{item.quantity}</td>
-                        <td className="py-3 px-2 text-center">{item.fulfilled_quantity}</td>
-                        <td className="py-3 px-2 text-center">
-                          {item.backorder_quantity > 0 ? (
-                            <span className="font-medium text-amber-600">{item.backorder_quantity}</span>
-                          ) : (
-                            <span className="text-emerald-700 font-medium">0</span>
-                          )}
-                        </td>
-
-                        <td className="py-3 px-2 text-right">${item.unit_price.toFixed(2)}</td>
-                        <td className="py-3 px-2 text-right font-medium">${item.total.toFixed(2)}</td>
-
-                        <td className="py-3 pl-4 text-right">
-                          {item.backorder_quantity > 0 && status !== "cancelled" ? (
-                            <div className="flex items-center justify-end gap-2">
-                              <Input
-                                type="number"
-                                min={1}
-                                max={item.backorder_quantity}
-                                value={fulfillQty[item.id] ?? ""}
-                                onChange={(e) =>
-                                  setFulfillQty((p) => ({
-                                    ...p,
-                                    [item.id]: Math.min(
-                                      item.backorder_quantity,
-                                      Math.max(0, Number.parseInt(e.target.value || "0", 10)),
-                                    ),
-                                  }))
-                                }
-                                className="w-24"
-                              />
-                              <Button
-                                type="button"
-                                size="sm"
-                                onClick={() => handleFulfill(item)}
-                                disabled={!!isFulfilling[item.id]}
-                              >
-                                {isFulfilling[item.id] ? (
-                                  <span className="inline-flex items-center gap-2">
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                    ...
-                                  </span>
-                                ) : (
-                                  "Fulfill"
-                                )}
-                              </Button>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
+                      <tr key={item.id} className="border-t align-middle">
+                        <td className="p-2">{item.product_name}</td>
+                        <td className="p-2 text-right">{item.quantity}</td>
+                        <td className="p-2 text-right">{item.fulfilled_quantity}</td>
+                        <td className="p-2 text-right">{item.backorder_quantity}</td>
+                        <td className="p-2 text-right">${Number(item.unit_price || 0).toFixed(2)}</td>
+                        <td className="p-2 text-right">${Number(item.total || 0).toFixed(2)}</td>
+                        <td className="p-2">
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              min={0}
+                              className="w-[90px]"
+                              value={String(fulfillQty[item.id] ?? "")}
+                              onChange={(e) => setFulfillQty((p) => ({ ...p, [item.id]: Number(e.target.value || 0) }))}
+                              placeholder="0"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              disabled={isFulfilling[item.id] || item.backorder_quantity <= 0}
+                              onClick={() => handleFulfill(item)}
+                            >
+                              {isFulfilling[item.id] ? "..." : "Fulfill"}
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -549,83 +376,40 @@ export function OrderDetails({ order, orderItems, payments }: OrderDetailsProps)
               </div>
             </CardContent>
           </Card>
-
-          {order.notes && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Notes</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">{order.notes}</p>
-              </CardContent>
-            </Card>
-          )}
         </div>
 
+        {/* Right column */}
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="h-5 w-5" />
-                Customer
-              </CardTitle>
+              <CardTitle>Customer</CardTitle>
             </CardHeader>
-            <CardContent>
-              {order.customers ? (
-                <div className="space-y-2">
-                  <p className="font-medium">{order.customers.name}</p>
-                  {order.customers.email && <p className="text-sm text-muted-foreground">{order.customers.email}</p>}
-                  {order.customers.phone && <p className="text-sm text-muted-foreground">{order.customers.phone}</p>}
-                </div>
-              ) : (
-                <p className="text-muted-foreground">Walk-in customer</p>
-              )}
+            <CardContent className="text-sm space-y-1">
+              <div className="font-medium">{order.customers?.name || "Walk-in customer"}</div>
+              {order.customers?.email ? <div className="text-muted-foreground">{order.customers.email}</div> : null}
+              {order.customers?.phone ? <div className="text-muted-foreground">{order.customers.phone}</div> : null}
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MapPin className="h-5 w-5" />
-                Shipping Address
-              </CardTitle>
+              <CardTitle>Shipping Address</CardTitle>
             </CardHeader>
-            <CardContent>
-              {order.shipping_address ? (
-                <div className="space-y-1">
-                  <p>{order.shipping_address}</p>
-                  {order.shipping_city && <p className="text-muted-foreground">{order.shipping_city}</p>}
-                </div>
-              ) : (
-                <p className="text-muted-foreground">No shipping address</p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CreditCard className="h-5 w-5" />
-                Payment
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Method</span>
-                  <span className="capitalize">{order.payment_method?.replace("_", " ") || "N/A"}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Status</span>
-                  <Badge variant="secondary" className={paymentColors[order.payment_status] || ""}>
-                    {order.payment_status}
-                  </Badge>
-                </div>
-              </div>
+            <CardContent className="text-sm text-muted-foreground">
+              {order.shipping_address || "No shipping address"}
             </CardContent>
           </Card>
         </div>
       </div>
+
+      {/* Modals */}
+      <RecordPaymentModal
+        open={paymentOpen}
+        onClose={() => setPaymentOpen(false)}
+        orderId={order.id}
+        balanceDue={balanceDue}
+      />
+
       <RefundPaymentModal
         open={refundOpen}
         onOpenChange={setRefundOpen}
