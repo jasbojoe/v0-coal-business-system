@@ -87,8 +87,7 @@ const statusColors: Record<string, string> = {
   delivered: "bg-green-100 text-green-800",
   cancelled: "bg-red-100 text-red-800",
 }
-const [refundOpen, setRefundOpen] = useState(false)
-const refundable = Math.max(paidAmount, 0)
+
 
 const paymentColors: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800",
@@ -114,10 +113,13 @@ export function OrderDetails({ order, orderItems, payments }: OrderDetailsProps)
   const [banner, setBanner] = useState<{ type: "idle" | "success" | "error"; message?: string }>({ type: "idle" })
 
   const [paymentOpen, setPaymentOpen] = useState(false)
+  const [refundOpen, setRefundOpen] = useState(false)
 
   const paidAmount = (payments || []).reduce((sum, p) => sum + Number(p.amount || 0), 0)
   const orderTotal = Number(order.total || 0)
   const balanceDue = Math.max(orderTotal - paidAmount, 0)
+  const refundable = Math.max(paidAmount, 0)
+
 
   // fulfillment states
   const [fulfillQty, setFulfillQty] = useState<Record<string, number>>({})
@@ -624,13 +626,13 @@ export function OrderDetails({ order, orderItems, payments }: OrderDetailsProps)
           </Card>
         </div>
       </div>
-      <RecordPaymentModal
-        open={paymentOpen}
-        onOpenChange={setPaymentOpen}
+      <RefundPaymentModal
+        open={refundOpen}
+        onOpenChange={setRefundOpen}
         orderId={order.id}
         orderNumber={order.order_number}
-        balanceDue={balanceDue}
-        onRecorded={() => router.refresh()}
+        maxRefund={refundable}
+        onRefunded={() => router.refresh()}
       />
     </div>
   )
