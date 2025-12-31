@@ -26,32 +26,28 @@ export function RecordPaymentModal({
   const [reference, setReference] = useState("")
   const [notes, setNotes] = useState("")
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
 
   const close = () => onOpenChange(false)
 
   async function submit() {
-    setError(null)
-
+    setErr(null)
     const value = Number(amount)
-    if (!Number.isFinite(value) || value <= 0) return setError("Enter a valid amount.")
-    if (value > balanceDue) return setError("Amount cannot be greater than the balance due.")
+
+    if (!Number.isFinite(value) || value <= 0) return setErr("Enter a valid amount.")
+    if (value > balanceDue) return setErr(`Amount cannot exceed $${balanceDue.toFixed(2)}.`)
 
     setLoading(true)
     try {
       await recordPayment(orderId, value, method, reference || null, notes || null)
-
-      // refresh parent + close
       onRecorded?.()
       close()
-
-      // reset fields
       setAmount("")
       setMethod("Cash")
       setReference("")
       setNotes("")
     } catch (e: any) {
-      setError(e?.message || "Failed to record payment.")
+      setErr(e?.message || "Failed to record payment.")
     } finally {
       setLoading(false)
     }
@@ -61,21 +57,15 @@ export function RecordPaymentModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Record Payment</DialogTitle>
+          <DialogTitle>Record Payment — Order {orderNumber}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="text-sm text-muted-foreground">
-            Order: <span className="font-medium">{orderNumber}</span>
-            <br />
             Balance due: <span className="font-medium">${balanceDue.toFixed(2)}</span>
           </div>
 
-          {error ? (
-            <div className="rounded-md border border-rose-200 bg-rose-50 p-2 text-sm text-rose-700">
-              {error}
-            </div>
-          ) : null}
+          {err ? <div className="rounded-md border bg-rose-50 p-3 text-sm text-rose-800">{err}</div> : null}
 
           <Input
             type="number"
@@ -86,28 +76,15 @@ export function RecordPaymentModal({
             onChange={(e) => setAmount(e.target.value)}
           />
 
-          <select
-            className="w-full border rounded px-3 py-2 bg-background"
-            value={method}
-            onChange={(e) => setMethod(e.target.value)}
-          >
+          <select className="w-full rounded border bg-background px-3 py-2" value={method} onChange={(e) => setMethod(e.target.value)}>
             <option value="Cash">Cash</option>
             <option value="Mobile Money">Mobile Money</option>
             <option value="Bank Transfer">Bank Transfer</option>
             <option value="Card">Card</option>
           </select>
 
-          <Input
-            placeholder="Reference (optional)"
-            value={reference}
-            onChange={(e) => setReference(e.target.value)}
-          />
-
-          <Input
-            placeholder="Notes (optional)"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
+          <Input placeholder="Reference (optional)" value={reference} onChange={(e) => setReference(e.target.value)} />
+          <Input placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
 
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={close} disabled={loading}>
