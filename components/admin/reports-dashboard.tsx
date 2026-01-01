@@ -133,21 +133,39 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
     run()
   }, [dateRange])
 
-  // Sales metrics
-  const salesMetrics = useMemo(() => {
-    const totalSalesValue = filteredOrders.reduce((sum, order) => sum + safeNumber(order.total), 0)
+// Sales metrics (refund-aware)
+const salesMetrics = useMemo(() => {
+  const totalOrders = filteredOrders.length
 
-    // Rule A: Revenue = payments received
-    const totalRevenue = (payments || []).reduce((sum, p) => sum + safeNumber(p.amount), 0)
+  const totalSalesValue = filteredOrders.reduce(
+    (sum, order) => sum + safeNumber(order.total),
+    0
+  )
 
-    const totalOrders = filteredOrders.length
-    const avgOrderValue = totalOrders > 0 ? totalSalesValue / totalOrders : 0
+  const grossPayments = (payments || []).reduce(
+    (sum, p) => sum + Math.max(safeNumber(p.amount), 0),
+    0
+  )
 
-    // ✅ You were rendering this but not returning it previously (this caused the crash)
-    const paidRevenue = totalRevenue
+  const refunds = (payments || []).reduce(
+    (sum, p) => sum + Math.abs(Math.min(safeNumber(p.amount), 0)),
+    0
+  )
 
-    return { totalRevenue, paidRevenue, totalSalesValue, totalOrders, avgOrderValue }
-  }, [filteredOrders, payments])
+  const netRevenue = grossPayments - refunds
+
+  const avgOrderValue = totalOrders > 0 ? totalSalesValue / totalOrders : 0
+
+  return {
+    grossPayments,
+    refunds,
+    netRevenue,
+    totalSalesValue,
+    totalOrders,
+    avgOrderValue,
+  }
+}, [filteredOrders, payments])
+
 
   // Sales by day chart data (revenue = payments per day)
   const salesByDay = useMemo(() => {
@@ -318,8 +336,8 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-muted-foreground">Total Revenue</p>
-                    <p className="text-2xl font-bold">Le {(salesMetrics.totalRevenue ?? 0).toLocaleString()}</p>
+                    <p className="text-sm text-muted-foreground">Gross Payments</p>
+                    <p className="text-2xl font-bold">Le {(salesMetrics.grossPayments ?? 0).toLocaleString()}</p>
                   </div>
                   <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
                     <DollarSign className="h-6 w-6 text-primary" />
@@ -327,6 +345,20 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
                 </div>
               </CardContent>
             </Card>
+
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Refunds</p>
+                    <p className="text-2xl font-bold text-red-600">
+                      Le {(salesMetrics.refunds ?? 0).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
 
             <Card>
               <CardContent className="p-6">
@@ -362,8 +394,8 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-muted-foreground">Paid Revenue</p>
-                    <p className="text-2xl font-bold">Le {(salesMetrics.paidRevenue ?? 0).toLocaleString()}</p>
+                    <p className="text-sm text-muted-foreground">Net Revenue</p>
+                    <p className="text-2xl font-bold">Le {(salesMetrics.netRevenue ?? 0).toLocaleString()}</p>
                   </div>
                   <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center">
                     <DollarSign className="h-6 w-6 text-blue-600" />
