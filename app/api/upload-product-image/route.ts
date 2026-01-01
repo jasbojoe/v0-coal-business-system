@@ -1,7 +1,10 @@
-import { NextRequest } from "next/server"
+import type { NextRequest } from "next/server"
 import { put } from "@vercel/blob"
 
 export const runtime = "edge"
+
+const MAX_BYTES = 5 * 1024 * 1024 // 5MB
+const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"])
 
 export async function POST(req: NextRequest) {
   const formData = await req.formData()
@@ -14,7 +17,24 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  const blob = await put(`products/${Date.now()}-${file.name}`, file, {
+  if (!ALLOWED_TYPES.has(file.type)) {
+    return new Response(JSON.stringify({ error: "Only JPG, PNG, or WEBP images are allowed" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    })
+  }
+
+  if (file.size > MAX_BYTES) {
+    return new Response(JSON.stringify({ error: "Image is too large (max 5MB)" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    })
+  }
+
+  const safeName = (file.name || "product").replace(/[^a-zA-Z0-9._-]/g, "_")
+  const key = `products/${Date.now()}-${safeName}`
+
+  const blob = await put(key, file, {
     access: "public",
   })
 

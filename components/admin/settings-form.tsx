@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
 import { Save, Loader2, User, Lock, Bell, Building } from "lucide-react"
+import { logActivity } from "@/lib/activity-logger"
 
 interface Profile {
   id: string
@@ -199,15 +200,39 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
       }
 
       if (companySettings?.id) {
-        // Update existing settings
         const { error } = await supabase.from("company_settings").update(settingsData).eq("id", companySettings.id)
 
         if (error) throw error
+
+        await logActivity({
+          action: "company_settings_updated",
+          entityType: "company_settings",
+          entityId: companySettings.id,
+          details: {
+            company_name: companyName,
+            business_email: businessEmail,
+            phone: companyPhone,
+          },
+        })
       } else {
-        // Insert new settings
-        const { error } = await supabase.from("company_settings").insert(settingsData)
+        const { data: newSettings, error } = await supabase
+          .from("company_settings")
+          .insert(settingsData)
+          .select()
+          .single()
 
         if (error) throw error
+
+        await logActivity({
+          action: "company_settings_updated",
+          entityType: "company_settings",
+          entityId: newSettings.id,
+          details: {
+            company_name: companyName,
+            business_email: businessEmail,
+            phone: companyPhone,
+          },
+        })
       }
 
       setMessage({ type: "success", text: "Company information saved successfully" })
@@ -262,11 +287,7 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <div className="h-16 w-16 overflow-hidden rounded-full border bg-muted">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={avatarUrl || "/placeholder.svg"}
-                    alt="Avatar"
-                    className="h-full w-full object-cover"
-                  />
+                  <img src={avatarUrl || "/placeholder.svg"} alt="Avatar" className="h-full w-full object-cover" />
                 </div>
 
                 <div className="flex-1">

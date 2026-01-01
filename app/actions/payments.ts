@@ -2,13 +2,12 @@
 
 import { createClient } from "@supabase/supabase-js"
 import { revalidatePath } from "next/cache"
+import { logActivity } from "@/lib/activity-logger"
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 
 // ✅ accept either env name (people often mismatch these)
-const serviceKey =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
 
 function admin() {
   if (!supabaseUrl) throw new Error("Missing env: NEXT_PUBLIC_SUPABASE_URL")
@@ -19,30 +18,28 @@ function admin() {
 async function recomputePaymentStatus(orderId: string) {
   const supabase = admin()
 
-  const { data: order, error: orderErr } = await supabase
-    .from("orders")
-    .select("id,total")
-    .eq("id", orderId)
-    .single()
+  const { data: order, error: orderErr } = await supabase.from("orders").select("id,total").eq("id", orderId).single()
   if (orderErr) throw new Error(orderErr.message)
 
-  const { data: rows, error: rowsErr } = await supabase
-    .from("payments")
-    .select("amount")
-    .eq("order_id", orderId)
+  const { data: rows, error: rowsErr } = await supabase.from("payments").select("amount").eq("order_id", orderId)
   if (rowsErr) throw new Error(rowsErr.message)
 
   const paid = (rows || []).reduce((s: number, r: any) => s + Number(r.amount || 0), 0)
   const total = Number(order.total || 0)
 
-  const payment_status =
-    paid <= 0 ? "pending" : paid + 0.00001 < total ? "partial" : "paid"
+  const payment_status = paid <= 0 ? "pending" : paid + 0.00001 < total ? "partial" : "paid"
 
   const { error: updErr } = await supabase.from("orders").update({ payment_status }).eq("id", orderId)
   if (updErr) throw new Error(updErr.message)
 }
 
-export async function recordPayment(orderId: string, amount: number, method: string, reference: string | null, notes: string | null) {
+export async function recordPayment(
+  orderId: string,
+  amount: number,
+  method: string,
+  reference: string | null,
+  notes: string | null,
+) {
   const supabase = admin()
   if (!orderId) throw new Error("Missing orderId")
   if (!Number.isFinite(amount) || amount <= 0) throw new Error("Invalid amount")
@@ -59,12 +56,29 @@ export async function recordPayment(orderId: string, amount: number, method: str
 
   await recomputePaymentStatus(orderId)
 
+  await logActivity({
+    action: "payment_recorded",
+    entityType: "payment",
+    entityId: orderId,
+    details: {
+      amount,
+      method,
+      reference,
+    },
+  })
+
   revalidatePath(`/admin/orders/${orderId}`)
   revalidatePath(`/admin/orders`)
   revalidatePath(`/admin/reports`)
 }
 
-export async function refundPayment(orderId: string, refundAmount: number, method: string, reference: string | null, notes: string | null) {
+export async function refundPayment(
+  orderId: string,
+  refundAmount: number,
+  method: string,
+  reference: string | null,
+  notes: string | null,
+) {
   const supabase = admin()
   if (!orderId) throw new Error("Missing orderId")
   if (!Number.isFinite(refundAmount) || refundAmount <= 0) throw new Error("Invalid refund amount")
@@ -80,6 +94,17 @@ export async function refundPayment(orderId: string, refundAmount: number, metho
   if (error) throw new Error(error.message)
 
   await recomputePaymentStatus(orderId)
+
+  await logActivity({
+    action: "payment_refunded",
+    entityType: "payment",
+    entityId: orderId,
+    details: {
+      amount: refundAmount,
+      method,
+      reference,
+    },
+  })
 
   revalidatePath(`/admin/orders/${orderId}`)
   revalidatePath(`/admin/orders`)

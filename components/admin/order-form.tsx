@@ -12,6 +12,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ArrowLeft, Plus, Trash2, Save, CheckCircle2, Loader2 } from "lucide-react"
 import Link from "next/link"
+import { reserveStockForOrder } from "@/app/actions/orders"
 
 interface Customer {
   id: string
@@ -168,11 +169,29 @@ export function OrderForm({ customers, products }: OrderFormProps) {
           shipping_city: formData.shipping_city || null,
           notes: formData.notes || null,
           payment_method: formData.payment_method,
+          stock_deducted: false, // Will be updated when fulfilled
         })
         .select()
         .single()
 
       if (orderError) throw orderError
+
+      const { error: itemsError } = await supabase.from("order_items").insert(
+        orderItems.map((item) => ({
+          order_id: order.id,
+          product_id: item.product_id,
+          product_name: item.product_name,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          total: item.total,
+          fulfilled_quantity: 0,
+          backorder_quantity: item.quantity, // Initially all on backorder
+        })),
+      )
+
+      if (itemsError) throw itemsError
+
+      await reserveStockForOrder(order.id)
 
       await supabase.rpc("log_activity", {
         p_action: "order_created",
@@ -186,20 +205,6 @@ export function OrderForm({ customers, products }: OrderFormProps) {
           item_count: orderItems.length,
         },
       })
-
-
-      const { error: itemsError } = await supabase.from("order_items").insert(
-        orderItems.map((item) => ({
-          order_id: order.id,
-          product_id: item.product_id,
-          product_name: item.product_name,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          total: item.total,
-        })),
-      )
-
-      if (itemsError) throw itemsError
 
       setStatus("success")
 
@@ -218,7 +223,10 @@ export function OrderForm({ customers, products }: OrderFormProps) {
   return (
     <form onSubmit={handleSubmit}>
       <div className="mb-6">
-        <Link href="/admin/orders" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground">
+        <Link
+          href="/admin/orders"
+          className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
+        >
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back to Orders
         </Link>
@@ -265,7 +273,6 @@ export function OrderForm({ customers, products }: OrderFormProps) {
                                     const available = stock - reserved
                                     return `${product.name} - $${product.unit_price} (Available: ${available})`
                                   })()}
-
                                 </SelectItem>
                               ))}
                             </SelectContent>

@@ -12,6 +12,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { MoreHorizontal, Pencil, Trash2, Search } from "lucide-react"
 import Link from "next/link"
+import { logActivity } from "@/lib/activity-logger"
 
 interface Product {
   id: string
@@ -52,7 +53,23 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
     if (!confirm("Are you sure you want to delete this product?")) return
 
     const supabase = createClient()
+
+    const { data: product } = await supabase.from("products").select("name, sku").eq("id", id).single()
+
     await supabase.from("products").delete().eq("id", id)
+
+    if (product) {
+      await logActivity({
+        action: "product_deleted",
+        entityType: "product",
+        entityId: id,
+        details: {
+          name: product.name,
+          sku: product.sku,
+        },
+      })
+    }
+
     router.refresh()
   }
 
@@ -118,7 +135,7 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
                         const reserved = Number(product.reserved_quantity ?? 0)
                         const stock = Number(product.stock_quantity ?? 0)
                         const available = stock - reserved
-                    
+
                         return (
                           <div className="space-y-0.5">
                             <div className={available <= product.min_stock_level ? "text-red-600 font-medium" : ""}>

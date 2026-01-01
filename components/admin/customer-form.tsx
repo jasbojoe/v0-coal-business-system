@@ -13,6 +13,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ArrowLeft, Save } from "lucide-react"
 import Link from "next/link"
+import { logActivity } from "@/lib/activity-logger"
 
 interface Customer {
   id: string
@@ -68,9 +69,30 @@ export function CustomerForm({ customer }: CustomerFormProps) {
       if (customer) {
         const { error } = await supabase.from("customers").update(data).eq("id", customer.id)
         if (error) throw error
+
+        await logActivity({
+          action: "customer_updated",
+          entityType: "customer",
+          entityId: customer.id,
+          details: {
+            name: formData.name,
+            customer_type: formData.customer_type,
+          },
+        })
       } else {
-        const { error } = await supabase.from("customers").insert(data)
+        const { data: newCustomer, error } = await supabase.from("customers").insert(data).select().single()
         if (error) throw error
+
+        await logActivity({
+          action: "customer_created",
+          entityType: "customer",
+          entityId: newCustomer.id,
+          details: {
+            name: formData.name,
+            customer_type: formData.customer_type,
+            company_name: formData.company_name,
+          },
+        })
       }
       router.push("/admin/customers")
       router.refresh()

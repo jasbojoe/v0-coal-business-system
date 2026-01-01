@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { ArrowLeft, Save } from "lucide-react"
 import Link from "next/link"
+import { logActivity } from "@/lib/activity-logger"
 
 interface Category {
   id: string
@@ -31,10 +32,9 @@ interface Product {
   stock_quantity: number
   min_stock_level: number
   is_active: boolean
-  image_url: string | null       // 👈 NEW
-  is_featured: boolean | null    // 👈 NEW
+  image_url: string | null // 👈 NEW
+  is_featured: boolean | null // 👈 NEW
 }
-
 
 interface ProductFormProps {
   product?: Product
@@ -56,11 +56,11 @@ export function ProductForm({ product, categories }: ProductFormProps) {
     stock_quantity: product?.stock_quantity?.toString() || "0",
     min_stock_level: product?.min_stock_level?.toString() || "10",
     is_active: product?.is_active ?? true,
-    image_url: product?.image_url ?? "",            // 👈 NEW
-    is_featured: product?.is_featured ?? false,     // 👈 NEW
+    image_url: product?.image_url ?? "", // 👈 NEW
+    is_featured: product?.is_featured ?? false, // 👈 NEW
   })
 
-  const [isUploading, setIsUploading] = useState(false)  // 👈 NEW
+  const [isUploading, setIsUploading] = useState(false) // 👈 NEW
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
@@ -78,18 +78,41 @@ export function ProductForm({ product, categories }: ProductFormProps) {
       stock_quantity: Number.parseInt(formData.stock_quantity),
       min_stock_level: Number.parseInt(formData.min_stock_level),
       is_active: formData.is_active,
-      image_url: formData.image_url || null,      // 👈 NEW
-      is_featured: formData.is_featured,          // 👈 NEW
+      image_url: formData.image_url || null,
+      is_featured: formData.is_featured,
     }
 
     try {
       if (product) {
         const { error } = await supabase.from("products").update(data).eq("id", product.id)
         if (error) throw error
+
+        await logActivity({
+          action: "product_updated",
+          entityType: "product",
+          entityId: product.id,
+          details: {
+            name: formData.name,
+            sku: formData.sku,
+            changes: data,
+          },
+        })
       } else {
-        const { error } = await supabase.from("products").insert(data)
+        const { data: newProduct, error } = await supabase.from("products").insert(data).select().single()
         if (error) throw error
+
+        await logActivity({
+          action: "product_created",
+          entityType: "product",
+          entityId: newProduct.id,
+          details: {
+            name: formData.name,
+            sku: formData.sku,
+            unit_price: data.unit_price,
+          },
+        })
       }
+
       router.push("/admin/products")
       router.refresh()
     } catch (err: unknown) {
@@ -100,34 +123,34 @@ export function ProductForm({ product, categories }: ProductFormProps) {
   }
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0]
-  if (!file) return
+    const file = e.target.files?.[0]
+    if (!file) return
 
-  setIsUploading(true)
-  setError(null)
+    setIsUploading(true)
+    setError(null)
 
-  try {
-    const formDataUpload = new FormData()
-    formDataUpload.append("file", file)
+    try {
+      const formDataUpload = new FormData()
+      formDataUpload.append("file", file)
 
-    const res = await fetch("/api/upload-product-image", {
-      method: "POST",
-      body: formDataUpload,
-    })
+      const res = await fetch("/api/upload-product-image", {
+        method: "POST",
+        body: formDataUpload,
+      })
 
-    if (!res.ok) {
-      throw new Error("Upload failed")
+      if (!res.ok) {
+        throw new Error("Upload failed")
+      }
+
+      const { url } = await res.json()
+      setFormData((prev) => ({ ...prev, image_url: url }))
+    } catch (err: any) {
+      console.error(err)
+      setError("Failed to upload image. Please try again.")
+    } finally {
+      setIsUploading(false)
     }
-
-    const { url } = await res.json()
-    setFormData((prev) => ({ ...prev, image_url: url }))
-  } catch (err: any) {
-    console.error(err)
-    setError("Failed to upload image. Please try again.")
-  } finally {
-    setIsUploading(false)
   }
-}
 
   return (
     <form onSubmit={handleSubmit}>
@@ -157,33 +180,25 @@ export function ProductForm({ product, categories }: ProductFormProps) {
                 />
               </div>
 
-            <div className="space-y-2">
-            <Label htmlFor="image">Product Image</Label>
-            <Input
-              id="image"
-              type="file"
-              accept="image/*"
-              onChange={handleImageUpload}
-              disabled={isUploading}
-            />
-            <p className="text-xs text-muted-foreground">
-              {isUploading ? "Uploading image..." : "Upload a product packshot (PNG/JPG)."}
-            </p>
+              <div className="space-y-2">
+                <Label htmlFor="image">Product Image</Label>
+                <Input id="image" type="file" accept="image/*" onChange={handleImageUpload} disabled={isUploading} />
+                <p className="text-xs text-muted-foreground">
+                  {isUploading ? "Uploading image..." : "Upload a product packshot (PNG/JPG)."}
+                </p>
 
-            {formData.image_url && (
-              <div className="mt-2">
-                <div className="h-40 w-40 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
-                  <img
-                    src={formData.image_url}
-                    alt="Product preview"
-                    className="h-full w-full object-contain"
-                  />
-                </div>
+                {formData.image_url && (
+                  <div className="mt-2">
+                    <div className="h-40 w-40 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                      <img
+                        src={formData.image_url || "/placeholder.svg"}
+                        alt="Product preview"
+                        className="h-full w-full object-contain"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-
-          </div>
-
 
               <div className="space-y-2">
                 <Label htmlFor="description">Description</Label>
@@ -303,19 +318,19 @@ export function ProductForm({ product, categories }: ProductFormProps) {
                   onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
                 />
               </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <Label htmlFor="is_featured">Show on homepage</Label>
-                <p className="text-sm text-muted-foreground">
-                  Feature this product in the homepage products section (max 3 recommended)
-                </p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="is_featured">Show on homepage</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Feature this product in the homepage products section (max 3 recommended)
+                  </p>
+                </div>
+                <Switch
+                  id="is_featured"
+                  checked={formData.is_featured}
+                  onCheckedChange={(checked) => setFormData({ ...formData, is_featured: checked })}
+                />
               </div>
-              <Switch
-                id="is_featured"
-                checked={formData.is_featured}
-                onCheckedChange={(checked) => setFormData({ ...formData, is_featured: checked })}
-              />
-            </div>
             </CardContent>
           </Card>
 

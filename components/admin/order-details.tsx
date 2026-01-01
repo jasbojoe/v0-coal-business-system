@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -14,6 +16,7 @@ import { createClient } from "@/lib/supabase/client"
 
 import { RecordPaymentModal } from "@/components/admin/record-payment-modal"
 import { RefundPaymentModal } from "@/components/admin/refund-payment-modal"
+import { cancelOrder, fulfillOrderItem } from "@/app/actions/orders"
 
 interface Customer {
   id: string
@@ -145,13 +148,7 @@ export function OrderDetails({ order, orderItems, payments }: OrderDetailsProps)
     setIsFulfilling((p) => ({ ...p, [item.id]: true }))
 
     try {
-      const supabase = createClient()
-      const { error } = await supabase.rpc("fulfill_order_item", {
-        p_order_item_id: item.id,
-        p_fulfill_qty: qty,
-      })
-      if (error) throw error
-
+      await fulfillOrderItem(item.id, qty)
       setMsg("Fulfillment successful. Stock updated.")
       setFulfillQty((p) => ({ ...p, [item.id]: 0 }))
       router.refresh()
@@ -162,10 +159,31 @@ export function OrderDetails({ order, orderItems, payments }: OrderDetailsProps)
     }
   }
 
+  const handleCancelOrder = async () => {
+    if (!confirm("Are you sure you want to cancel this order? This will release all reserved stock.")) return
+
+    setErr(null)
+    setMsg(null)
+    setIsUpdatingStatus(true)
+
+    try {
+      await cancelOrder(order.id)
+      setMsg("Order cancelled successfully. Stock has been released.")
+      router.refresh()
+    } catch (e: any) {
+      setErr(e?.message || "Failed to cancel order.")
+    } finally {
+      setIsUpdatingStatus(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/admin/orders" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground">
+        <Link
+          href="/admin/orders"
+          className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
+        >
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back to Orders
         </Link>
@@ -178,7 +196,11 @@ export function OrderDetails({ order, orderItems, payments }: OrderDetailsProps)
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <Select value={status} onValueChange={updateOrderStatus} disabled={isUpdatingStatus || status === "cancelled"}>
+          <Select
+            value={status}
+            onValueChange={updateOrderStatus}
+            disabled={isUpdatingStatus || status === "cancelled"}
+          >
             <SelectTrigger className="w-[160px]">
               <div className="flex items-center gap-2">
                 <Badge variant="secondary" className={statusColors[status] || ""}>
@@ -209,8 +231,13 @@ export function OrderDetails({ order, orderItems, payments }: OrderDetailsProps)
             Refund
           </Button>
 
-          <Button type="button" variant="destructive">
-            Cancel
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={handleCancelOrder}
+            disabled={isUpdatingStatus || status === "cancelled"}
+          >
+            Cancel Order
           </Button>
         </div>
       </div>
@@ -253,7 +280,9 @@ export function OrderDetails({ order, orderItems, payments }: OrderDetailsProps)
                         const amt = Number(p.amount || 0)
                         return (
                           <tr key={p.id} className="border-t">
-                            <td className="p-2">{p.payment_date ? new Date(p.payment_date).toLocaleDateString() : "—"}</td>
+                            <td className="p-2">
+                              {p.payment_date ? new Date(p.payment_date).toLocaleDateString() : "—"}
+                            </td>
                             <td className="p-2">{p.payment_method || "—"}</td>
                             <td className="p-2">{p.reference || "—"}</td>
                             <td className="p-2 text-right font-medium">
