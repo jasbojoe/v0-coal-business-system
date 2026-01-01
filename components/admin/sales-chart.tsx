@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 
 type Row = { amount: number; payment_date: string | null }
-type Point = { month: string; sales: number }
+type Point = { month: string; netRevenue: number }
 
 function safeNumber(n: any) {
   const v = Number(n)
@@ -55,14 +55,14 @@ export function SalesChart() {
       map.set(label, (map.get(label) || 0) + safeNumber(r.amount))
     }
 
-    return Array.from(map.entries()).map(([month, sales]) => ({ month, sales }))
+    return Array.from(map.entries()).map(([month, netRevenue]) => ({ month, netRevenue }))
   }, [rows])
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Sales Overview</CardTitle>
-        <CardDescription>Cash collected from payments (monthly)</CardDescription>
+        <CardTitle>Net Revenue Overview</CardTitle>
+        <CardDescription>Payments collected minus refunds (monthly)</CardDescription>
       </CardHeader>
 
       <CardContent>
