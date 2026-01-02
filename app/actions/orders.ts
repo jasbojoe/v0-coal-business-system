@@ -1,6 +1,8 @@
 "use server"
 
 import { createClient } from "@supabase/supabase-js"
+import { createServerClient } from "@supabase/ssr"
+import { cookies } from "next/headers"
 import { revalidatePath } from "next/cache"
 import { logActivity } from "@/lib/activity-logger"
 
@@ -15,6 +17,27 @@ function admin() {
   })
 }
 
+async function getCurrentUserId(): Promise<string | null> {
+  try {
+    if (!supabaseUrl || !serviceKey) return null
+
+    const cookieStore = await cookies()
+    const supabase = createServerClient(supabaseUrl, serviceKey, {
+      cookies: {
+        getAll: () => cookieStore.getAll(),
+        setAll: () => {},
+      },
+    })
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    return user?.id || null
+  } catch {
+    return null
+  }
+}
+
 export async function reserveStockForOrder(orderId: string) {
   const supabase = admin()
 
@@ -24,10 +47,13 @@ export async function reserveStockForOrder(orderId: string) {
 
   if (error) throw new Error(error.message)
 
+  const userId = await getCurrentUserId()
+
   await logActivity({
     action: "inventory_updated",
     entityType: "order",
     entityId: orderId,
+    userId,
     details: {
       action: "stock_reserved",
       message: "Stock reserved for order",
@@ -49,10 +75,13 @@ export async function cancelOrder(orderId: string) {
 
   if (error) throw new Error(error.message)
 
+  const userId = await getCurrentUserId()
+
   await logActivity({
     action: "order_cancelled",
     entityType: "order",
     entityId: orderId,
+    userId,
     details: {
       message: "Order cancelled and stock released",
     },
@@ -81,10 +110,13 @@ export async function fulfillOrderItem(orderItemId: string, fulfillQty: number) 
     .single()
 
   if (item) {
+    const userId = await getCurrentUserId()
+
     await logActivity({
       action: "order_fulfilled",
       entityType: "order",
       entityId: item.order_id,
+      userId,
       details: {
         product: item.product_name,
         quantity: fulfillQty,

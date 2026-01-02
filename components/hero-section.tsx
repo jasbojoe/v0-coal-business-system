@@ -58,8 +58,7 @@ export function HeroSection() {
 
       <div className="relative mx-auto flex h-full max-w-7xl flex-col justify-center px-6 lg:px-8">
         <div className="max-w-xl">
-          {/* Badge */}
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 backdrop-blur-sm border border-white/10">
+          <div className="mb-6 inline-flex lg:hidden items-center gap-2 rounded-full bg-white/10 px-4 py-2 backdrop-blur-sm border border-white/10">
             <Image
               src="/images/sierra-leone-icon.png"
               alt="Sierra Leone"

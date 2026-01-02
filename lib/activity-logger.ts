@@ -1,4 +1,6 @@
 import { createClient } from "@supabase/supabase-js"
+import { createServerClient } from "@supabase/ssr"
+import { cookies } from "next/headers"
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -11,6 +13,28 @@ function adminClient() {
   })
 }
 
+async function getCurrentUserId(): Promise<string | null> {
+  try {
+    if (!supabaseUrl) return null
+    if (!serviceKey) return null
+
+    const cookieStore = await cookies()
+    const supabase = createServerClient(supabaseUrl, serviceKey, {
+      cookies: {
+        getAll: () => cookieStore.getAll(),
+        setAll: () => {},
+      },
+    })
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    return user?.id || null
+  } catch {
+    return null
+  }
+}
+
 export type ActivityAction =
   // Orders
   | "order_created"
@@ -18,6 +42,8 @@ export type ActivityAction =
   | "order_cancelled"
   | "order_fulfilled"
   | "order_deleted"
+  | "order_status_changed"
+  | "order_payment_status_changed"
   // Products
   | "product_created"
   | "product_updated"
@@ -70,11 +96,13 @@ export async function logActivity(params: {
   const supabase = adminClient()
 
   try {
+    const userId = params.userId || (await getCurrentUserId())
+
     const { error } = await supabase.from("activity_logs").insert({
       action: params.action,
       entity_type: params.entityType,
       entity_id: params.entityId || null,
-      user_id: params.userId || null,
+      user_id: userId,
       details: params.details || null,
     })
 

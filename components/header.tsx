@@ -10,13 +10,12 @@ import { useCompanySettings } from "@/lib/hooks/useCompanySettings"
 const navLinks = [
   { href: "#home", label: "Home" },
   { href: "#about", label: "About" },
-  { href: "/products", label: "Products" }, // separate page
+  { href: "/products", label: "Products" },
   { href: "#contact", label: "Contact" },
 ]
 
-// Local fallbacks (your current ones)
-const FALLBACK_LOGO_LIGHT = "/images/wiyone-logo-whitetext.svg" // for dark/hero bg
-const FALLBACK_LOGO_DARK = "/images/wiyone-logo-blacktext.svg"  // for white/scrolled bg
+const FALLBACK_LOGO_LIGHT = "/images/wiyone-logo-whitetext.svg"
+const FALLBACK_LOGO_DARK = "/images/wiyone-logo-blacktext.svg"
 
 export function Header() {
   const { data: company } = useCompanySettings()
@@ -30,14 +29,6 @@ export function Header() {
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
 
-  // ✅ DB-driven logo switching:
-  // - not scrolled (hero/dark background): use logo_light_url
-  // - scrolled (white background): use logo_dark_url
-  //
-  // fallback order:
-  // 1) logo_light_url / logo_dark_url
-  // 2) logo_url (single logo if you only set one)
-  // 3) local fallback svg
   const lightLogo = company?.logo_light_url || company?.logo_url || FALLBACK_LOGO_LIGHT
   const darkLogo = company?.logo_dark_url || company?.logo_url || FALLBACK_LOGO_DARK
   const logoSrc = isScrolled ? darkLogo : lightLogo
@@ -52,18 +43,33 @@ export function Header() {
     >
       <div className="mx-auto max-w-7xl px-6 lg:px-8">
         <div className="flex h-20 items-center justify-between">
-          {/* Logo */}
-          <Link href="/" className="flex items-center">
-            <Image
-              src={logoSrc}
-              alt={brandName}
-              width={140}
-              height={70}
-              className="h-10 w-auto"
-              priority
-              unoptimized
-            />
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link href="/" className="flex items-center">
+              <Image
+                src={logoSrc || "/placeholder.svg"}
+                alt={brandName}
+                width={140}
+                height={70}
+                className="h-10 w-auto"
+                priority
+                unoptimized
+              />
+            </Link>
+
+            {/* Badge - only visible on desktop, moved to header */}
+            <div className="hidden lg:flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 backdrop-blur-sm border border-white/10">
+              <Image
+                src="/images/sierra-leone-icon.png"
+                alt="Sierra Leone"
+                width={16}
+                height={16}
+                className="rounded-full"
+              />
+              <span className={`text-xs font-medium tracking-wide ${isScrolled ? "text-slate-600" : "text-white/90"}`}>
+                Made in Sierra Leone
+              </span>
+            </div>
+          </div>
 
           {/* Desktop nav */}
           <nav className="hidden items-center gap-8 md:flex">

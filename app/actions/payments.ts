@@ -1,6 +1,8 @@
 "use server"
 
 import { createClient } from "@supabase/supabase-js"
+import { createServerClient } from "@supabase/ssr"
+import { cookies } from "next/headers"
 import { revalidatePath } from "next/cache"
 import { logActivity } from "@/lib/activity-logger"
 
@@ -13,6 +15,27 @@ function admin() {
   if (!supabaseUrl) throw new Error("Missing env: NEXT_PUBLIC_SUPABASE_URL")
   if (!serviceKey) throw new Error("Missing env: SUPABASE_SERVICE_ROLE_KEY")
   return createClient(supabaseUrl, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } })
+}
+
+async function getCurrentUserId(): Promise<string | null> {
+  try {
+    if (!supabaseUrl || !serviceKey) return null
+
+    const cookieStore = await cookies()
+    const supabase = createServerClient(supabaseUrl, serviceKey, {
+      cookies: {
+        getAll: () => cookieStore.getAll(),
+        setAll: () => {},
+      },
+    })
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    return user?.id || null
+  } catch {
+    return null
+  }
 }
 
 async function recomputePaymentStatus(orderId: string) {
@@ -56,10 +79,13 @@ export async function recordPayment(
 
   await recomputePaymentStatus(orderId)
 
+  const userId = await getCurrentUserId()
+
   await logActivity({
     action: "payment_recorded",
     entityType: "payment",
     entityId: orderId,
+    userId,
     details: {
       amount,
       method,
@@ -95,10 +121,13 @@ export async function refundPayment(
 
   await recomputePaymentStatus(orderId)
 
+  const userId = await getCurrentUserId()
+
   await logActivity({
     action: "payment_refunded",
     entityType: "payment",
     entityId: orderId,
+    userId,
     details: {
       amount: refundAmount,
       method,
