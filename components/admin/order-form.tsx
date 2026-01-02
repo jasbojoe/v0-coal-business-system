@@ -206,6 +206,37 @@ export function OrderForm({ customers, products }: OrderFormProps) {
         },
       })
 
+      if (formData.customer_id) {
+        const { data: customer } = await supabase
+          .from("customers")
+          .select("name, email")
+          .eq("id", formData.customer_id)
+          .single()
+
+        if (customer?.email) {
+          try {
+            await fetch("/api/send-order-confirmation", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                customerName: customer.name,
+                customerEmail: customer.email,
+                orderNumber: order.order_number,
+                orderItems: orderItems.map((item) => ({
+                  name: item.product_name,
+                  quantity: item.quantity,
+                  price: item.unit_price,
+                })),
+                total: total,
+                orderDate: new Date().toISOString(),
+              }),
+            })
+          } catch (emailError) {
+            console.error("Failed to send order confirmation email:", emailError)
+          }
+        }
+      }
+
       setStatus("success")
 
       setTimeout(() => {

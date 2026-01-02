@@ -25,6 +25,13 @@ import {
 } from "recharts"
 import { TrendingUp, DollarSign, Package, Users, Factory, Download, Calendar, AlertTriangle } from "lucide-react"
 import { format, subDays } from "date-fns"
+import {
+  exportToCSV,
+  formatOrdersForExport,
+  formatProductsForExport,
+  formatProductionBatchesForExport,
+  formatSalesDataForExport,
+} from "@/lib/export-utils"
 
 interface Order {
   id: string
@@ -133,39 +140,29 @@ export function ReportsDashboard({ orders, products, productionBatches, staff }:
     run()
   }, [dateRange])
 
-// Sales metrics (refund-aware)
-const salesMetrics = useMemo(() => {
-  const totalOrders = filteredOrders.length
+  // Sales metrics (refund-aware)
+  const salesMetrics = useMemo(() => {
+    const totalOrders = filteredOrders.length
 
-  const totalSalesValue = filteredOrders.reduce(
-    (sum, order) => sum + safeNumber(order.total),
-    0
-  )
+    const totalSalesValue = filteredOrders.reduce((sum, order) => sum + safeNumber(order.total), 0)
 
-  const grossPayments = (payments || []).reduce(
-    (sum, p) => sum + Math.max(safeNumber(p.amount), 0),
-    0
-  )
+    const grossPayments = (payments || []).reduce((sum, p) => sum + Math.max(safeNumber(p.amount), 0), 0)
 
-  const refunds = (payments || []).reduce(
-    (sum, p) => sum + Math.abs(Math.min(safeNumber(p.amount), 0)),
-    0
-  )
+    const refunds = (payments || []).reduce((sum, p) => sum + Math.abs(Math.min(safeNumber(p.amount), 0)), 0)
 
-  const netRevenue = grossPayments - refunds
+    const netRevenue = grossPayments - refunds
 
-  const avgOrderValue = totalOrders > 0 ? totalSalesValue / totalOrders : 0
+    const avgOrderValue = totalOrders > 0 ? totalSalesValue / totalOrders : 0
 
-  return {
-    grossPayments,
-    refunds,
-    netRevenue,
-    totalSalesValue,
-    totalOrders,
-    avgOrderValue,
-  }
-}, [filteredOrders, payments])
-
+    return {
+      grossPayments,
+      refunds,
+      netRevenue,
+      totalSalesValue,
+      totalOrders,
+      avgOrderValue,
+    }
+  }, [filteredOrders, payments])
 
   // Sales by day chart data (revenue = payments per day)
   const salesByDay = useMemo(() => {
@@ -226,10 +223,7 @@ const salesMetrics = useMemo(() => {
       return available <= safeNumber(p.min_stock_level)
     })
     const outOfStock = products.filter((p) => safeNumber(p.stock_quantity) === 0)
-    const totalValue = products.reduce(
-      (sum, p) => sum + safeNumber(p.stock_quantity) * safeNumber(p.unit_price),
-      0,
-    )
+    const totalValue = products.reduce((sum, p) => sum + safeNumber(p.stock_quantity) * safeNumber(p.unit_price), 0)
     return { lowStock: lowStock.length, outOfStock: outOfStock.length, totalValue }
   }, [products])
 
@@ -289,6 +283,27 @@ const salesMetrics = useMemo(() => {
       .slice(0, 5)
   }, [filteredOrders])
 
+  const handleExportSales = () => {
+    const data = formatSalesDataForExport(filteredOrders)
+    exportToCSV(data, "sales-report")
+  }
+
+  const handleExportOrders = () => {
+    const data = formatOrdersForExport(filteredOrders)
+    exportToCSV(data, "orders-report")
+  }
+
+  const handleExportInventory = () => {
+    const data = formatProductsForExport(products)
+    exportToCSV(data, "inventory-report")
+  }
+
+  const handleExportProduction = () => {
+    const data = formatProductionBatchesForExport(productionBatches)
+    exportToCSV(data, "production-report")
+  }
+  // </CHANGE>
+
   return (
     <div className="space-y-6">
       {/* Date Range Filter */}
@@ -308,9 +323,9 @@ const salesMetrics = useMemo(() => {
             </SelectContent>
           </Select>
         </div>
-        <Button variant="outline" className="gap-2 bg-transparent">
+        <Button variant="outline" className="gap-2 bg-transparent" onClick={handleExportOrders}>
           <Download className="h-4 w-4" />
-          Export Report
+          Export Orders
         </Button>
       </div>
 
@@ -330,6 +345,19 @@ const salesMetrics = useMemo(() => {
 
         {/* Sales Tab */}
         <TabsContent value="sales" className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold">Sales Report</h2>
+              <p className="text-sm text-muted-foreground">Analyze your sales performance</p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" className="gap-2 bg-transparent" onClick={handleExportSales}>
+                <Download className="h-4 w-4" />
+                Export Report
+              </Button>
+            </div>
+          </div>
+
           {/* Sales KPIs */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card>
@@ -351,14 +379,11 @@ const salesMetrics = useMemo(() => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">Refunds</p>
-                    <p className="text-2xl font-bold text-red-600">
-                      Le {(salesMetrics.refunds ?? 0).toLocaleString()}
-                    </p>
+                    <p className="text-2xl font-bold text-red-600">Le {(salesMetrics.refunds ?? 0).toLocaleString()}</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
-
 
             <Card>
               <CardContent className="p-6">
@@ -420,7 +445,13 @@ const salesMetrics = useMemo(() => {
                       <XAxis dataKey="date" fontSize={12} />
                       <YAxis fontSize={12} />
                       <Tooltip formatter={(v: any) => `Le ${safeNumber(v).toLocaleString()}`} />
-                      <Line type="monotone" dataKey="revenue" stroke="#0D3B3B" strokeWidth={2} dot={{ fill: "#0D3B3B" }} />
+                      <Line
+                        type="monotone"
+                        dataKey="revenue"
+                        stroke="#0D3B3B"
+                        strokeWidth={2}
+                        dot={{ fill: "#0D3B3B" }}
+                      />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -504,6 +535,17 @@ const salesMetrics = useMemo(() => {
 
         {/* Inventory Tab */}
         <TabsContent value="inventory" className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold">Inventory Report</h2>
+              <p className="text-sm text-muted-foreground">Monitor stock levels and product performance</p>
+            </div>
+            <Button variant="outline" className="gap-2 bg-transparent" onClick={handleExportInventory}>
+              <Download className="h-4 w-4" />
+              Export Inventory
+            </Button>
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardContent className="p-6">
@@ -579,6 +621,17 @@ const salesMetrics = useMemo(() => {
 
         {/* Production Tab */}
         <TabsContent value="production" className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold">Production Report</h2>
+              <p className="text-sm text-muted-foreground">Track production batches and quality metrics</p>
+            </div>
+            <Button variant="outline" className="gap-2 bg-transparent" onClick={handleExportProduction}>
+              <Download className="h-4 w-4" />
+              Export Production
+            </Button>
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardContent className="p-6">
@@ -650,7 +703,9 @@ const salesMetrics = useMemo(() => {
                     <TableRow key={batch.id}>
                       <TableCell className="font-mono">{batch.batch_number}</TableCell>
                       <TableCell>{batch.product?.name || "-"}</TableCell>
-                      <TableCell className="text-right">{safeNumber(batch.quantity_produced).toLocaleString()}</TableCell>
+                      <TableCell className="text-right">
+                        {safeNumber(batch.quantity_produced).toLocaleString()}
+                      </TableCell>
                       <TableCell>
                         <Badge
                           variant={
