@@ -13,7 +13,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, Plus, Trash2, Save, CheckCircle2, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { reserveStockForOrder } from "@/app/actions/orders"
-import { logActivity } from "@/lib/activity-logger"
 
 interface Customer {
   id: string
@@ -191,19 +190,6 @@ export function OrderForm({ customers, products }: OrderFormProps) {
       if (itemsError) throw itemsError
 
       await reserveStockForOrder(order.id)
-
-      await logActivity({
-        action: "order_created",
-        entityType: "order",
-        entityId: order.id,
-        details: {
-          order_number: order.order_number,
-          subtotal,
-          tax,
-          total,
-          item_count: orderItems.length,
-        },
-      })
 
       if (formData.customer_id) {
         const { data: customer } = await supabase
