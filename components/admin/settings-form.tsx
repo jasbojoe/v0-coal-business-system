@@ -28,6 +28,8 @@ interface CompanySettings {
   city: string | null
   country: string | null
   logo_url: string | null
+  logo_light_url: string | null
+  logo_dark_url: string | null
   website: string | null
 }
 
@@ -46,10 +48,12 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
 
   // Upload state
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
-  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [uploadingLightLogo, setUploadingLightLogo] = useState(false)
+  const [uploadingDarkLogo, setUploadingDarkLogo] = useState(false)
 
   const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url || "")
-  const [companyLogoUrl, setCompanyLogoUrl] = useState(companySettings?.logo_url || "")
+  const [logoLightUrl, setLogoLightUrl] = useState(companySettings?.logo_light_url || companySettings?.logo_url || "")
+  const [logoDarkUrl, setLogoDarkUrl] = useState(companySettings?.logo_dark_url || "")
 
   // Profile settings
   const [fullName, setFullName] = useState(profile?.full_name || "")
@@ -104,8 +108,12 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
     }
   }
 
-  const uploadCompanyLogo = async (file: File) => {
-    setUploadingLogo(true)
+  const uploadLogo = async (file: File, variant: "light" | "dark") => {
+    if (variant === "light") {
+      setUploadingLightLogo(true)
+    } else {
+      setUploadingDarkLogo(true)
+    }
     setMessage({ type: "", text: "" })
     try {
       const form = new FormData()
@@ -122,13 +130,21 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
       const url = json?.url as string
       if (!url) throw new Error("Upload failed: missing URL")
 
-      // Store the URL and also persist it when saving company settings.
-      setCompanyLogoUrl(url)
-      setMessage({ type: "success", text: "Logo uploaded. Click 'Save Company Info' to publish it." })
+      // Store the URL based on variant
+      if (variant === "light") {
+        setLogoLightUrl(url)
+      } else {
+        setLogoDarkUrl(url)
+      }
+      setMessage({ type: "success", text: `${variant === "light" ? "Light" : "Dark"} logo uploaded. Click 'Save Company Info' to publish it.` })
     } catch (err: any) {
       setMessage({ type: "error", text: err?.message || "Failed to upload company logo" })
     } finally {
-      setUploadingLogo(false)
+      if (variant === "light") {
+        setUploadingLightLogo(false)
+      } else {
+        setUploadingDarkLogo(false)
+      }
     }
   }
 
@@ -217,7 +233,9 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
         city: companyCity,
         country: companyCountry,
         website: companyWebsite,
-        logo_url: companyLogoUrl || null,
+        logo_url: logoLightUrl || null,
+        logo_light_url: logoLightUrl || null,
+        logo_dark_url: logoDarkUrl || null,
       }
 
       const result = await updateCompanySettings(companySettings?.id || null, settingsData)
@@ -444,39 +462,78 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Company Logo</Label>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <div className="h-16 w-16 overflow-hidden rounded border bg-muted">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={companyLogoUrl || "/placeholder.svg"}
-                    alt="Company logo"
-                    className="h-full w-full object-contain p-1"
-                  />
+            <div className="space-y-4">
+              <Label>Company Logos</Label>
+              <p className="text-sm text-muted-foreground">
+                Upload separate logos for light and dark backgrounds. The light logo appears on dark headers, 
+                and the dark logo appears on light backgrounds.
+              </p>
+              
+              <div className="grid gap-4 md:grid-cols-2">
+                {/* Light Logo (for dark backgrounds) */}
+                <div className="space-y-2 rounded-lg border p-4 bg-zinc-900">
+                  <Label className="text-white">Light Logo (for dark backgrounds)</Label>
+                  <div className="flex items-center gap-3">
+                    <div className="h-14 w-14 overflow-hidden rounded border border-zinc-700 bg-zinc-800">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={logoLightUrl || "/placeholder.svg"}
+                        alt="Light logo preview"
+                        className="h-full w-full object-contain p-1"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <Input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                        disabled={uploadingLightLogo || loading}
+                        className="bg-zinc-800 border-zinc-700 text-white"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (!file) return
+                          void uploadLogo(file, "light")
+                          e.currentTarget.value = ""
+                        }}
+                      />
+                      {uploadingLightLogo && <p className="mt-1 text-xs text-zinc-400">Uploading...</p>}
+                    </div>
+                  </div>
                 </div>
 
-                <div className="flex-1">
-                  <Input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                    disabled={uploadingLogo || loading}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (!file) return
-                      void uploadCompanyLogo(file)
-                      e.currentTarget.value = ""
-                    }}
-                  />
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    JPG, PNG, WEBP, or SVG. Max 5MB. Upload then click "Save Company Info".
-                  </p>
-                </div>
-
-                <div className="text-xs text-muted-foreground sm:w-[110px] sm:text-right">
-                  {uploadingLogo ? "Uploading…" : ""}
+                {/* Dark Logo (for light backgrounds) */}
+                <div className="space-y-2 rounded-lg border p-4 bg-zinc-100">
+                  <Label className="text-zinc-900">Dark Logo (for light backgrounds)</Label>
+                  <div className="flex items-center gap-3">
+                    <div className="h-14 w-14 overflow-hidden rounded border border-zinc-300 bg-white">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={logoDarkUrl || logoLightUrl || "/placeholder.svg"}
+                        alt="Dark logo preview"
+                        className="h-full w-full object-contain p-1"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <Input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                        disabled={uploadingDarkLogo || loading}
+                        className="bg-white border-zinc-300 text-zinc-900"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (!file) return
+                          void uploadLogo(file, "dark")
+                          e.currentTarget.value = ""
+                        }}
+                      />
+                      {uploadingDarkLogo && <p className="mt-1 text-xs text-zinc-600">Uploading...</p>}
+                    </div>
+                  </div>
                 </div>
               </div>
+              
+              <p className="text-xs text-muted-foreground">
+                JPG, PNG, WEBP, or SVG. Max 5MB each. Upload then click "Save Company Info".
+              </p>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
