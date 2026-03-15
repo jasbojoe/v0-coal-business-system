@@ -10,13 +10,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
 import { Save, Loader2, User, Lock, Bell, Building } from "lucide-react"
-import { logActivity } from "@/lib/activity-logger"
+import { updateCompanySettings, updateProfile as updateProfileAction, updateNotificationPreferences } from "@/app/actions/settings"
+
+interface NotificationPreferences {
+  email_notifications?: boolean
+  order_alerts?: boolean
+  low_stock_alerts?: boolean
+  weekly_reports?: boolean
+}
 
 interface Profile {
   id: string
   full_name: string | null
   email: string | null
   avatar_url: string | null
+  notification_preferences?: NotificationPreferences | null
 }
 
 interface CompanySettings {
@@ -28,7 +36,13 @@ interface CompanySettings {
   city: string | null
   country: string | null
   logo_url: string | null
+  logo_light_url: string | null
+  logo_dark_url: string | null
   website: string | null
+  facebook_url: string | null
+  twitter_url: string | null
+  instagram_url: string | null
+  linkedin_url: string | null
 }
 
 interface SettingsFormProps {
@@ -46,10 +60,12 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
 
   // Upload state
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
-  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [uploadingLightLogo, setUploadingLightLogo] = useState(false)
+  const [uploadingDarkLogo, setUploadingDarkLogo] = useState(false)
 
   const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url || "")
-  const [companyLogoUrl, setCompanyLogoUrl] = useState(companySettings?.logo_url || "")
+  const [logoLightUrl, setLogoLightUrl] = useState(companySettings?.logo_light_url || companySettings?.logo_url || "")
+  const [logoDarkUrl, setLogoDarkUrl] = useState(companySettings?.logo_dark_url || "")
 
   // Profile settings
   const [fullName, setFullName] = useState(profile?.full_name || "")
@@ -59,11 +75,12 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
 
-  // Notification settings
-  const [emailNotifications, setEmailNotifications] = useState(true)
-  const [orderAlerts, setOrderAlerts] = useState(true)
-  const [lowStockAlerts, setLowStockAlerts] = useState(true)
-  const [weeklyReports, setWeeklyReports] = useState(false)
+  // Notification settings (load from profile if available)
+  const notifPrefs = profile?.notification_preferences
+  const [emailNotifications, setEmailNotifications] = useState(notifPrefs?.email_notifications ?? true)
+  const [orderAlerts, setOrderAlerts] = useState(notifPrefs?.order_alerts ?? true)
+  const [lowStockAlerts, setLowStockAlerts] = useState(notifPrefs?.low_stock_alerts ?? true)
+  const [weeklyReports, setWeeklyReports] = useState(notifPrefs?.weekly_reports ?? false)
 
   const [companyName, setCompanyName] = useState(companySettings?.company_name || "")
   const [businessEmail, setBusinessEmail] = useState(companySettings?.business_email || "")
@@ -72,6 +89,12 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
   const [companyCity, setCompanyCity] = useState(companySettings?.city || "")
   const [companyCountry, setCompanyCountry] = useState(companySettings?.country || "")
   const [companyWebsite, setCompanyWebsite] = useState(companySettings?.website || "")
+  
+  // Social links
+  const [facebookUrl, setFacebookUrl] = useState(companySettings?.facebook_url || "")
+  const [twitterUrl, setTwitterUrl] = useState(companySettings?.twitter_url || "")
+  const [instagramUrl, setInstagramUrl] = useState(companySettings?.instagram_url || "")
+  const [linkedinUrl, setLinkedinUrl] = useState(companySettings?.linkedin_url || "")
 
   const uploadAvatar = async (file: File) => {
     setUploadingAvatar(true)
@@ -104,8 +127,12 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
     }
   }
 
-  const uploadCompanyLogo = async (file: File) => {
-    setUploadingLogo(true)
+  const uploadLogo = async (file: File, variant: "light" | "dark") => {
+    if (variant === "light") {
+      setUploadingLightLogo(true)
+    } else {
+      setUploadingDarkLogo(true)
+    }
     setMessage({ type: "", text: "" })
     try {
       const form = new FormData()
@@ -122,13 +149,21 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
       const url = json?.url as string
       if (!url) throw new Error("Upload failed: missing URL")
 
-      // Store the URL and also persist it when saving company settings.
-      setCompanyLogoUrl(url)
-      setMessage({ type: "success", text: "Logo uploaded. Click 'Save Company Info' to publish it." })
+      // Store the URL based on variant
+      if (variant === "light") {
+        setLogoLightUrl(url)
+      } else {
+        setLogoDarkUrl(url)
+      }
+      setMessage({ type: "success", text: `${variant === "light" ? "Light" : "Dark"} logo uploaded. Click 'Save Company Info' to publish it.` })
     } catch (err: any) {
       setMessage({ type: "error", text: err?.message || "Failed to upload company logo" })
     } finally {
-      setUploadingLogo(false)
+      if (variant === "light") {
+        setUploadingLightLogo(false)
+      } else {
+        setUploadingDarkLogo(false)
+      }
     }
   }
 
@@ -137,9 +172,9 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
     setMessage({ type: "", text: "" })
 
     try {
-      const { error } = await supabase.from("profiles").update({ full_name: fullName }).eq("id", user.id)
+      const result = await updateProfileAction(user.id, { full_name: fullName })
 
-      if (error) throw error
+      if (!result.success) throw new Error(result.error)
 
       setMessage({ type: "success", text: "Profile updated successfully" })
       router.refresh()
@@ -182,7 +217,29 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
     }
   }
 
-  const updateCompanySettings = async () => {
+  const handleSaveNotificationPreferences = async () => {
+    setLoading(true)
+    setMessage({ type: "", text: "" })
+
+    try {
+      const result = await updateNotificationPreferences(user.id, {
+        email_notifications: emailNotifications,
+        order_alerts: orderAlerts,
+        low_stock_alerts: lowStockAlerts,
+        weekly_reports: weeklyReports,
+      })
+
+      if (!result.success) throw new Error(result.error)
+
+      setMessage({ type: "success", text: "Notification preferences saved successfully" })
+    } catch (err: any) {
+      setMessage({ type: "error", text: err.message })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleUpdateCompanySettings = async () => {
     setLoading(true)
     setMessage({ type: "", text: "" })
 
@@ -195,45 +252,18 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
         city: companyCity,
         country: companyCountry,
         website: companyWebsite,
-        logo_url: companyLogoUrl || null,
-        updated_at: new Date().toISOString(),
+        logo_url: logoLightUrl || null,
+        logo_light_url: logoLightUrl || null,
+        logo_dark_url: logoDarkUrl || null,
+        facebook_url: facebookUrl || null,
+        twitter_url: twitterUrl || null,
+        instagram_url: instagramUrl || null,
+        linkedin_url: linkedinUrl || null,
       }
 
-      if (companySettings?.id) {
-        const { error } = await supabase.from("company_settings").update(settingsData).eq("id", companySettings.id)
+      const result = await updateCompanySettings(companySettings?.id || null, settingsData)
 
-        if (error) throw error
-
-        await logActivity({
-          action: "company_settings_updated",
-          entityType: "company_settings",
-          entityId: companySettings.id,
-          details: {
-            company_name: companyName,
-            business_email: businessEmail,
-            phone: companyPhone,
-          },
-        })
-      } else {
-        const { data: newSettings, error } = await supabase
-          .from("company_settings")
-          .insert(settingsData)
-          .select()
-          .single()
-
-        if (error) throw error
-
-        await logActivity({
-          action: "company_settings_updated",
-          entityType: "company_settings",
-          entityId: newSettings.id,
-          details: {
-            company_name: companyName,
-            business_email: businessEmail,
-            phone: companyPhone,
-          },
-        })
-      }
+      if (!result.success) throw new Error(result.error)
 
       setMessage({ type: "success", text: "Company information saved successfully" })
       router.refresh()
@@ -429,9 +459,18 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
               <Switch checked={weeklyReports} onCheckedChange={setWeeklyReports} />
             </div>
 
-            <Button className="bg-primary hover:bg-primary/90">
-              <Save className="mr-2 h-4 w-4" />
-              Save Preferences
+            <Button onClick={handleSaveNotificationPreferences} disabled={loading} className="bg-primary hover:bg-primary/90">
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="mr-2 h-4 w-4" />
+                  Save Preferences
+                </>
+              )}
             </Button>
           </CardContent>
         </Card>
@@ -446,39 +485,78 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Company Logo</Label>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <div className="h-16 w-16 overflow-hidden rounded border bg-muted">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={companyLogoUrl || "/placeholder.svg"}
-                    alt="Company logo"
-                    className="h-full w-full object-contain p-1"
-                  />
+            <div className="space-y-4">
+              <Label>Company Logos</Label>
+              <p className="text-sm text-muted-foreground">
+                Upload separate logos for light and dark backgrounds. The light logo appears on dark headers, 
+                and the dark logo appears on light backgrounds.
+              </p>
+              
+              <div className="grid gap-4 md:grid-cols-2">
+                {/* Light Logo (for dark backgrounds) */}
+                <div className="space-y-2 rounded-lg border p-4 bg-zinc-900">
+                  <Label className="text-white">Light Logo (for dark backgrounds)</Label>
+                  <div className="flex items-center gap-3">
+                    <div className="h-14 w-14 overflow-hidden rounded border border-zinc-700 bg-zinc-800">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={logoLightUrl || "/placeholder.svg"}
+                        alt="Light logo preview"
+                        className="h-full w-full object-contain p-1"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <Input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                        disabled={uploadingLightLogo || loading}
+                        className="bg-zinc-800 border-zinc-700 text-white"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (!file) return
+                          void uploadLogo(file, "light")
+                          e.currentTarget.value = ""
+                        }}
+                      />
+                      {uploadingLightLogo && <p className="mt-1 text-xs text-zinc-400">Uploading...</p>}
+                    </div>
+                  </div>
                 </div>
 
-                <div className="flex-1">
-                  <Input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                    disabled={uploadingLogo || loading}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (!file) return
-                      void uploadCompanyLogo(file)
-                      e.currentTarget.value = ""
-                    }}
-                  />
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    JPG, PNG, WEBP, or SVG. Max 5MB. Upload then click "Save Company Info".
-                  </p>
-                </div>
-
-                <div className="text-xs text-muted-foreground sm:w-[110px] sm:text-right">
-                  {uploadingLogo ? "Uploading…" : ""}
+                {/* Dark Logo (for light backgrounds) */}
+                <div className="space-y-2 rounded-lg border p-4 bg-zinc-100">
+                  <Label className="text-zinc-900">Dark Logo (for light backgrounds)</Label>
+                  <div className="flex items-center gap-3">
+                    <div className="h-14 w-14 overflow-hidden rounded border border-zinc-300 bg-white">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={logoDarkUrl || logoLightUrl || "/placeholder.svg"}
+                        alt="Dark logo preview"
+                        className="h-full w-full object-contain p-1"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <Input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                        disabled={uploadingDarkLogo || loading}
+                        className="bg-white border-zinc-300 text-zinc-900"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (!file) return
+                          void uploadLogo(file, "dark")
+                          e.currentTarget.value = ""
+                        }}
+                      />
+                      {uploadingDarkLogo && <p className="mt-1 text-xs text-zinc-600">Uploading...</p>}
+                    </div>
+                  </div>
                 </div>
               </div>
+              
+              <p className="text-xs text-muted-foreground">
+                JPG, PNG, WEBP, or SVG. Max 5MB each. Upload then click "Save Company Info".
+              </p>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
@@ -560,7 +638,61 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
               </div>
             </div>
 
-            <Button onClick={updateCompanySettings} disabled={loading} className="bg-primary hover:bg-primary/90">
+            {/* Social Media Links */}
+            <div className="border-t pt-6 mt-6">
+              <h3 className="text-lg font-medium mb-4">Social Media Links</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Add your social media profiles to display them in the website footer.
+              </p>
+              
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="facebookUrl">Facebook</Label>
+                  <Input
+                    id="facebookUrl"
+                    type="url"
+                    value={facebookUrl}
+                    onChange={(e) => setFacebookUrl(e.target.value)}
+                    placeholder="https://facebook.com/yourpage"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="twitterUrl">Twitter / X</Label>
+                  <Input
+                    id="twitterUrl"
+                    type="url"
+                    value={twitterUrl}
+                    onChange={(e) => setTwitterUrl(e.target.value)}
+                    placeholder="https://twitter.com/yourhandle"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="instagramUrl">Instagram</Label>
+                  <Input
+                    id="instagramUrl"
+                    type="url"
+                    value={instagramUrl}
+                    onChange={(e) => setInstagramUrl(e.target.value)}
+                    placeholder="https://instagram.com/yourprofile"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="linkedinUrl">LinkedIn</Label>
+                  <Input
+                    id="linkedinUrl"
+                    type="url"
+                    value={linkedinUrl}
+                    onChange={(e) => setLinkedinUrl(e.target.value)}
+                    placeholder="https://linkedin.com/company/yourcompany"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <Button onClick={handleUpdateCompanySettings} disabled={loading} className="bg-primary hover:bg-primary/90">
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

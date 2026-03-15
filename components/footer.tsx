@@ -24,17 +24,18 @@ const footerLinks = {
   ],
 }
 
-const socialLinks = [
-  { icon: Facebook, href: "#", label: "Facebook" },
-  { icon: Twitter, href: "#", label: "Twitter" },
-  { icon: Instagram, href: "#", label: "Instagram" },
-  { icon: Linkedin, href: "#", label: "LinkedIn" },
-]
-
 export function Footer() {
   const { data: company } = useCompanySettings()
 
   const brandName = company?.company_name || "Wiyone Charcoal"
+
+  // Dynamic social links from database
+  const socialLinks = [
+    { icon: Facebook, href: company?.facebook_url || "#", label: "Facebook" },
+    { icon: Twitter, href: company?.twitter_url || "#", label: "Twitter" },
+    { icon: Instagram, href: company?.instagram_url || "#", label: "Instagram" },
+    { icon: Linkedin, href: company?.linkedin_url || "#", label: "LinkedIn" },
+  ].filter(link => link.href && link.href !== "#")
 
   // For footer (dark background), prefer light logo if you have it
   const footerLogo =
@@ -94,18 +95,22 @@ export function Footer() {
               ) : null}
             </div>
 
-            <div className="mt-5 flex gap-2">
-              {socialLinks.map((social) => (
-                <a
-                  key={social.label}
-                  href={social.href}
-                  className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-800 text-slate-400 hover:bg-teal-500 hover:text-white transition-colors"
-                  aria-label={social.label}
-                >
-                  <social.icon className="h-4 w-4" />
-                </a>
-              ))}
-            </div>
+            {socialLinks.length > 0 && (
+              <div className="mt-5 flex gap-2">
+                {socialLinks.map((social) => (
+                  <a
+                    key={social.label}
+                    href={social.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-800 text-slate-400 hover:bg-teal-500 hover:text-white transition-colors"
+                    aria-label={social.label}
+                  >
+                    <social.icon className="h-4 w-4" />
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Links */}
