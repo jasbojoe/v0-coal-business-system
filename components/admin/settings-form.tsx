@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
 import { Save, Loader2, User, Lock, Bell, Building } from "lucide-react"
-import { logActivity } from "@/lib/activity-logger"
+import { updateCompanySettings, updateProfile as updateProfileAction, updateNotificationPreferences } from "@/app/actions/settings"
 
 interface Profile {
   id: string
@@ -137,9 +137,9 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
     setMessage({ type: "", text: "" })
 
     try {
-      const { error } = await supabase.from("profiles").update({ full_name: fullName }).eq("id", user.id)
+      const result = await updateProfileAction(user.id, { full_name: fullName })
 
-      if (error) throw error
+      if (!result.success) throw new Error(result.error)
 
       setMessage({ type: "success", text: "Profile updated successfully" })
       router.refresh()
@@ -182,7 +182,29 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
     }
   }
 
-  const updateCompanySettings = async () => {
+  const handleSaveNotificationPreferences = async () => {
+    setLoading(true)
+    setMessage({ type: "", text: "" })
+
+    try {
+      const result = await updateNotificationPreferences(user.id, {
+        email_notifications: emailNotifications,
+        order_alerts: orderAlerts,
+        low_stock_alerts: lowStockAlerts,
+        weekly_reports: weeklyReports,
+      })
+
+      if (!result.success) throw new Error(result.error)
+
+      setMessage({ type: "success", text: "Notification preferences saved successfully" })
+    } catch (err: any) {
+      setMessage({ type: "error", text: err.message })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleUpdateCompanySettings = async () => {
     setLoading(true)
     setMessage({ type: "", text: "" })
 
@@ -196,44 +218,11 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
         country: companyCountry,
         website: companyWebsite,
         logo_url: companyLogoUrl || null,
-        updated_at: new Date().toISOString(),
       }
 
-      if (companySettings?.id) {
-        const { error } = await supabase.from("company_settings").update(settingsData).eq("id", companySettings.id)
+      const result = await updateCompanySettings(companySettings?.id || null, settingsData)
 
-        if (error) throw error
-
-        await logActivity({
-          action: "company_settings_updated",
-          entityType: "company_settings",
-          entityId: companySettings.id,
-          details: {
-            company_name: companyName,
-            business_email: businessEmail,
-            phone: companyPhone,
-          },
-        })
-      } else {
-        const { data: newSettings, error } = await supabase
-          .from("company_settings")
-          .insert(settingsData)
-          .select()
-          .single()
-
-        if (error) throw error
-
-        await logActivity({
-          action: "company_settings_updated",
-          entityType: "company_settings",
-          entityId: newSettings.id,
-          details: {
-            company_name: companyName,
-            business_email: businessEmail,
-            phone: companyPhone,
-          },
-        })
-      }
+      if (!result.success) throw new Error(result.error)
 
       setMessage({ type: "success", text: "Company information saved successfully" })
       router.refresh()
@@ -429,9 +418,18 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
               <Switch checked={weeklyReports} onCheckedChange={setWeeklyReports} />
             </div>
 
-            <Button className="bg-primary hover:bg-primary/90">
-              <Save className="mr-2 h-4 w-4" />
-              Save Preferences
+            <Button onClick={handleSaveNotificationPreferences} disabled={loading} className="bg-primary hover:bg-primary/90">
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="mr-2 h-4 w-4" />
+                  Save Preferences
+                </>
+              )}
             </Button>
           </CardContent>
         </Card>
@@ -560,7 +558,7 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
               </div>
             </div>
 
-            <Button onClick={updateCompanySettings} disabled={loading} className="bg-primary hover:bg-primary/90">
+            <Button onClick={handleUpdateCompanySettings} disabled={loading} className="bg-primary hover:bg-primary/90">
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
