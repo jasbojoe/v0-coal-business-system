@@ -12,11 +12,19 @@ import { Switch } from "@/components/ui/switch"
 import { Save, Loader2, User, Lock, Bell, Building } from "lucide-react"
 import { updateCompanySettings, updateProfile as updateProfileAction, updateNotificationPreferences } from "@/app/actions/settings"
 
+interface NotificationPreferences {
+  email_notifications?: boolean
+  order_alerts?: boolean
+  low_stock_alerts?: boolean
+  weekly_reports?: boolean
+}
+
 interface Profile {
   id: string
   full_name: string | null
   email: string | null
   avatar_url: string | null
+  notification_preferences?: NotificationPreferences | null
 }
 
 interface CompanySettings {
@@ -31,6 +39,10 @@ interface CompanySettings {
   logo_light_url: string | null
   logo_dark_url: string | null
   website: string | null
+  facebook_url: string | null
+  twitter_url: string | null
+  instagram_url: string | null
+  linkedin_url: string | null
 }
 
 interface SettingsFormProps {
@@ -63,11 +75,12 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
 
-  // Notification settings
-  const [emailNotifications, setEmailNotifications] = useState(true)
-  const [orderAlerts, setOrderAlerts] = useState(true)
-  const [lowStockAlerts, setLowStockAlerts] = useState(true)
-  const [weeklyReports, setWeeklyReports] = useState(false)
+  // Notification settings (load from profile if available)
+  const notifPrefs = profile?.notification_preferences
+  const [emailNotifications, setEmailNotifications] = useState(notifPrefs?.email_notifications ?? true)
+  const [orderAlerts, setOrderAlerts] = useState(notifPrefs?.order_alerts ?? true)
+  const [lowStockAlerts, setLowStockAlerts] = useState(notifPrefs?.low_stock_alerts ?? true)
+  const [weeklyReports, setWeeklyReports] = useState(notifPrefs?.weekly_reports ?? false)
 
   const [companyName, setCompanyName] = useState(companySettings?.company_name || "")
   const [businessEmail, setBusinessEmail] = useState(companySettings?.business_email || "")
@@ -76,6 +89,12 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
   const [companyCity, setCompanyCity] = useState(companySettings?.city || "")
   const [companyCountry, setCompanyCountry] = useState(companySettings?.country || "")
   const [companyWebsite, setCompanyWebsite] = useState(companySettings?.website || "")
+  
+  // Social links
+  const [facebookUrl, setFacebookUrl] = useState(companySettings?.facebook_url || "")
+  const [twitterUrl, setTwitterUrl] = useState(companySettings?.twitter_url || "")
+  const [instagramUrl, setInstagramUrl] = useState(companySettings?.instagram_url || "")
+  const [linkedinUrl, setLinkedinUrl] = useState(companySettings?.linkedin_url || "")
 
   const uploadAvatar = async (file: File) => {
     setUploadingAvatar(true)
@@ -236,6 +255,10 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
         logo_url: logoLightUrl || null,
         logo_light_url: logoLightUrl || null,
         logo_dark_url: logoDarkUrl || null,
+        facebook_url: facebookUrl || null,
+        twitter_url: twitterUrl || null,
+        instagram_url: instagramUrl || null,
+        linkedin_url: linkedinUrl || null,
       }
 
       const result = await updateCompanySettings(companySettings?.id || null, settingsData)
@@ -612,6 +635,60 @@ export function SettingsForm({ user, profile, companySettings }: SettingsFormPro
                   onChange={(e) => setCompanyCountry(e.target.value)}
                   placeholder="Sierra Leone"
                 />
+              </div>
+            </div>
+
+            {/* Social Media Links */}
+            <div className="border-t pt-6 mt-6">
+              <h3 className="text-lg font-medium mb-4">Social Media Links</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Add your social media profiles to display them in the website footer.
+              </p>
+              
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="facebookUrl">Facebook</Label>
+                  <Input
+                    id="facebookUrl"
+                    type="url"
+                    value={facebookUrl}
+                    onChange={(e) => setFacebookUrl(e.target.value)}
+                    placeholder="https://facebook.com/yourpage"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="twitterUrl">Twitter / X</Label>
+                  <Input
+                    id="twitterUrl"
+                    type="url"
+                    value={twitterUrl}
+                    onChange={(e) => setTwitterUrl(e.target.value)}
+                    placeholder="https://twitter.com/yourhandle"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="instagramUrl">Instagram</Label>
+                  <Input
+                    id="instagramUrl"
+                    type="url"
+                    value={instagramUrl}
+                    onChange={(e) => setInstagramUrl(e.target.value)}
+                    placeholder="https://instagram.com/yourprofile"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="linkedinUrl">LinkedIn</Label>
+                  <Input
+                    id="linkedinUrl"
+                    type="url"
+                    value={linkedinUrl}
+                    onChange={(e) => setLinkedinUrl(e.target.value)}
+                    placeholder="https://linkedin.com/company/yourcompany"
+                  />
+                </div>
               </div>
             </div>
 
